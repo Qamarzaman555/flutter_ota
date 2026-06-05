@@ -113,7 +113,7 @@ class Esp32OtaPackage implements OtaPackage {
   Future<List<Uint8List>> _getFirmwareFromPicker(int mtuSize) async {
     print("Mtu size in fie picker is $mtuSize");
 
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.any,
       //allowedExtensions: ['bin'],
     );
@@ -143,7 +143,7 @@ class Esp32OtaPackage implements OtaPackage {
     print("Mtu size in fie picker for arduino firmware is ${mtuSize}");
     final binfile_data;
 
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.any,
       //allowedExtensions: ['bin'],
     );

@@ -5,7 +5,7 @@ class BluetoothCore {
   Stream<ScanResult> scan() => FlutterBluePlus.scan();
 
   Future connect(BluetoothDevice device) async {
-    await device.connect(autoConnect: false);
+    await device.connect(license: License.nonprofit, autoConnect: false);
   }
 
   Future<List<BluetoothService>> getServices(BluetoothDevice device) async {

@@ -60,31 +60,47 @@ class HomePageController extends GetxController {
   }
 
   Future<bool> connectToDevice() async {
-    //showToast("Connecting ....");
     await FlutterBluePlus.stopScan();
-    try {
-      await gBleDevice!.disconnect();
-      print("before trying to connect");
-      await gBleDevice!.connect(autoConnect: false);
-      print("after connect");
-    } catch (e) {
-      if (e.toString() != 'already_connected') {
-        await gBleDevice!.disconnect();
-      }
-    } finally {
-      gBleServices.value = await gBleDevice!.discoverServices();
-      print("Services discovered in connect is ${gBleServices.value}");
-      Future.delayed(const Duration(milliseconds: 500), () async {
-        if (Platform.isAndroid) {
-          await gBleDevice!.requestMtu(200);
-          print("mtu set");
-        }
-      });
-      Future.delayed(Duration.zero, () async {
-        print("Connected my device");
-        showToast('Connected');
-      });
+
+    final device = gBleDevice;
+    if (device == null) {
+      showToast('No device selected');
+      return false;
     }
-    return true;
+
+    try {
+      // Start from a clean state so a stale connection can't break discovery.
+      if (device.isConnected) {
+        await device.disconnect();
+      }
+
+      print("before trying to connect");
+      await device.connect(autoConnect: false, license: License.nonprofit);
+      print("after connect");
+
+      // Negotiate a larger MTU before discovering services (Android only).
+      if (Platform.isAndroid) {
+        await device.requestMtu(200);
+        print("mtu set");
+      }
+
+      // Only safe to discover services once the device is actually connected.
+      gBleServices.assignAll(await device.discoverServices());
+      print("Services discovered in connect is $gBleServices");
+
+      gIsDeviceConnected.value = true;
+      showToast('Connected');
+      return true;
+    } catch (e) {
+      print("Connection failed: $e");
+      gIsDeviceConnected.value = false;
+      try {
+        await device.disconnect();
+      } catch (_) {
+        // Ignore: device may already be disconnected.
+      }
+      showToast('Connection failed');
+      return false;
+    }
   }
 }
