@@ -8,6 +8,31 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 
+/// The type of update protocol used to flash the firmware.
+///
+/// * [UpdateType.espidf]: Firmware update following the ESP-IDF/Espressif
+///   framework (formerly represented by the integer `1`).
+/// * [UpdateType.arduino]: Firmware update based on the Arduino framework for
+///   ESP32 (formerly represented by the integer `2`).
+enum UpdateType {
+  espidf,
+  arduino,
+}
+
+/// The source from which the firmware binary is loaded.
+///
+/// * [FirmwareType.assets]: Load the firmware from the app's bundled assets
+///   (formerly represented by the integer `1`).
+/// * [FirmwareType.filepicker]: Let the user pick the firmware file from the
+///   device (formerly represented by the integer `2`).
+/// * [FirmwareType.url]: Download the firmware from a URL (formerly represented
+///   by the integer `3`).
+enum FirmwareType {
+  assets,
+  filepicker,
+  url,
+}
+
 // Abstract class defining the structure of an OTA package
 abstract class OtaPackage {
   /// Method to update firmware.
@@ -22,8 +47,8 @@ abstract class OtaPackage {
   /// [url]: The URL to fetch firmware from (optional).
   Future<void> updateFirmware(
       BluetoothDevice device,
-      int updateType,
-      int firmwareType,
+      UpdateType updateType,
+      FirmwareType firmwareType,
       BluetoothService service,
       BluetoothCharacteristic dataUUID,
       BluetoothCharacteristic controlUUID,
@@ -104,12 +129,12 @@ class Esp32OtaPackage implements OtaPackage {
   }
 
   /// Get firmware based on firmwareType
-  Future<List<Uint8List>> getFirmware(int firmwareType, int mtuSize,
+  Future<List<Uint8List>> getFirmware(FirmwareType firmwareType, int mtuSize,
       {String? binFilePath}) {
-    if (firmwareType == 2) {
+    if (firmwareType == FirmwareType.filepicker) {
       print("in package mtu size is $mtuSize");
       return _getFirmwareFromPicker(mtuSize - 3);
-    } else if (firmwareType == 1 && binFilePath != null) {
+    } else if (firmwareType == FirmwareType.assets && binFilePath != null) {
       return _readBinaryFile(binFilePath, mtuSize);
     } else {
       return Future.value([]); // Return empty list for other cases
@@ -317,14 +342,14 @@ class Esp32OtaPackage implements OtaPackage {
   @override
   Future<void> updateFirmware(
       BluetoothDevice device,
-      int updateType,
-      int firmwareType,
+      UpdateType updateType,
+      FirmwareType firmwareType,
       BluetoothService service,
       BluetoothCharacteristic dataUUID,
       BluetoothCharacteristic controlUUID,
       {String? binFilePath,
       String? url}) async {
-    if (updateType == 1) {
+    if (updateType == UpdateType.espidf) {
       final bleRepo = BleRepository();
 
       /// Get MTU size from the device
@@ -340,11 +365,15 @@ class Esp32OtaPackage implements OtaPackage {
       List<Uint8List> binaryChunks;
 
       /// Choose firmware source based on firmwareType
-      if (firmwareType == 1 && binFilePath != null && binFilePath.isNotEmpty) {
+      if (firmwareType == FirmwareType.assets &&
+          binFilePath != null &&
+          binFilePath.isNotEmpty) {
         binaryChunks = await _readBinaryFile(binFilePath, mtuSize);
-      } else if (firmwareType == 2) {
+      } else if (firmwareType == FirmwareType.filepicker) {
         binaryChunks = await _getFirmwareFromPicker(mtuSize);
-      } else if (firmwareType == 3 && url != null && url.isNotEmpty) {
+      } else if (firmwareType == FirmwareType.url &&
+          url != null &&
+          url.isNotEmpty) {
         binaryChunks = await _getFirmwareFromUrl(url, mtuSize);
       } else {
         binaryChunks = [];
@@ -393,7 +422,7 @@ class Esp32OtaPackage implements OtaPackage {
         print('OTA update failed');
         firmwareUpdate = false; // Firmware update failed
       }
-    } else if (updateType == 2) {
+    } else if (updateType == UpdateType.arduino) {
 
       final bleRepo = BleRepository();
 
@@ -409,16 +438,18 @@ class Esp32OtaPackage implements OtaPackage {
       Uint8List? binFile;
 
       /// Choose firmware source based on firmwareType
-      if (firmwareType == 1 && binFilePath != null) {
+      if (firmwareType == FirmwareType.assets && binFilePath != null) {
         ByteData fileData = await rootBundle.load(binFilePath);
         List<int> bytes = fileData.buffer.asUint8List();
         binFile = Uint8List.fromList(bytes);
         print("Bin file after conversion is $binFile");
         print("Bin file length after conversion is ${binFile.length}");
-      } else if (firmwareType == 2) {
+      } else if (firmwareType == FirmwareType.filepicker) {
         binFile = await _getFirmwareFromPickerArduino(200);
         print("binFile is $binFile");
-      } else if (firmwareType == 3 && url != null && url.isNotEmpty) {
+      } else if (firmwareType == FirmwareType.url &&
+          url != null &&
+          url.isNotEmpty) {
         binFile = await _getFirmwareFromUrlArduino(url, mtuSize);
       } else {
         binFile = Uint8List(0);
