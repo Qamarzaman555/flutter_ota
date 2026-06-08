@@ -323,19 +323,6 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                               'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Release_v1.5.22%20(1).img?alt=media&token=6cd5dbf5-8da8-44a5-add3-63c5106a27f1',
                           mtuSize: 500,
                         );
-                        /*if (binfile != null) {
-                              await esp32otaPackage.updateFirmware(
-                                device,
-                                1,
-                                service,
-                                dataUuid,
-                                controlUuid,
-                                binFilePath: "assets/helllo.ino.bin",
-                              );
-                            }*/
-
-                        // Initialize BleUartController before sending a command
-                        // bleUartController.init();
 
                         characteristicsFound =
                             true; // Set the flag to true since characteristics were found
