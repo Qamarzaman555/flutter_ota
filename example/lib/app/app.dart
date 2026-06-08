@@ -3,6 +3,8 @@ import 'package:get/get_navigation/src/root/get_material_app.dart';
 
 import '../routing/app_pages.dart';
 class OTANewApp extends StatefulWidget {
+  const OTANewApp({super.key});
+
   @override
   State<OTANewApp> createState() => _OTANewAppState();
 }

@@ -56,6 +56,29 @@ class _MyHomePageState extends State<MyHomePage> {
   HomePageController homePageController = Get.find();
 
   @override
+  void initState() {
+    super.initState();
+    // Attempt to auto-connect to the previously connected device on launch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _attemptAutoConnect();
+    });
+  }
+
+  Future<void> _attemptAutoConnect() async {
+    await homePageController.loadLastDevice();
+    if (!homePageController.hasLastDevice) return;
+
+    final connected = await homePageController.autoConnectToLastDevice();
+    if (!mounted) return;
+    if (connected) {
+      homePageController.connectedDevice.value = [
+        homePageController.gBleDevice!,
+      ];
+      Get.toNamed(AppRoutes.newOtaUpdate);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
     // by the _incrementCounter method above.
@@ -134,6 +157,39 @@ class _MyHomePageState extends State<MyHomePage> {
                         child:
                       )*/
             ),
+            Obx(() {
+              if (!homePageController.hasLastDevice) {
+                return const SizedBox.shrink();
+              }
+              final bool busy = homePageController.isAutoConnecting.value;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: OutlinedButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          final connected = await homePageController
+                              .autoConnectToLastDevice();
+                          if (!mounted) return;
+                          if (connected) {
+                            Get.toNamed(AppRoutes.newOtaUpdate);
+                          }
+                        },
+                  icon: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.history),
+                  label: Text(
+                    busy
+                        ? "Connecting to ${homePageController.lastDeviceName.value}..."
+                        : "Reconnect to ${homePageController.lastDeviceName.value}",
+                  ),
+                ),
+              );
+            }),
           ],
         ),
       ), // This trailing comma makes auto-formatting nicer for build methods.

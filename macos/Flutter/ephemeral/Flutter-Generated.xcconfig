@@ -1,6 +1,6 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=/Users/4star/Downloads/flutter
-FLUTTER_APPLICATION_PATH=/Users/4star/Documents/Minhal projects/flutter_ota
+FLUTTER_ROOT=/usr/local/flutter
+FLUTTER_APPLICATION_PATH=/Users/qamarzaman/StudioProjects/flutter_ota
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_BUILD_DIR=build
 FLUTTER_BUILD_NAME=0.1.15

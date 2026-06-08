@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:get/get.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../common/toast/show_toast.dart';
 
@@ -20,6 +21,73 @@ class HomePageController extends GetxController {
   RxList<BluetoothDevice> connectedDevice = <BluetoothDevice>[].obs;
 
   StreamSubscription? streamSubscription;
+
+  /// Keys used to persist the last successfully connected device.
+  static const String _lastDeviceIdKey = 'last_connected_device_id';
+  static const String _lastDeviceNameKey = 'last_connected_device_name';
+
+  /// Remote id / name of the last device we successfully connected to.
+  /// These are empty when no device has been connected before.
+  final RxString lastDeviceId = ''.obs;
+  final RxString lastDeviceName = ''.obs;
+
+  /// Whether an auto-connect attempt is currently running.
+  final RxBool isAutoConnecting = false.obs;
+
+  /// Whether a previously connected device is remembered.
+  bool get hasLastDevice => lastDeviceId.value.isNotEmpty;
+
+  /// Loads the last connected device info from persistent storage.
+  Future<void> loadLastDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    lastDeviceId.value = prefs.getString(_lastDeviceIdKey) ?? '';
+    lastDeviceName.value = prefs.getString(_lastDeviceNameKey) ?? '';
+    print(
+        "Loaded last device: ${lastDeviceName.value} (${lastDeviceId.value})");
+  }
+
+  /// Persists the given device so it can be auto-connected to next time.
+  Future<void> _saveLastDevice(BluetoothDevice device) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String id = device.remoteId.str;
+    final String name =
+        device.platformName.isNotEmpty ? device.platformName : id;
+    await prefs.setString(_lastDeviceIdKey, id);
+    await prefs.setString(_lastDeviceNameKey, name);
+    lastDeviceId.value = id;
+    lastDeviceName.value = name;
+    print("Saved last device: $name ($id)");
+  }
+
+  /// Attempts to reconnect to the most recently connected device without
+  /// requiring a fresh scan. Returns true if the connection succeeded.
+  Future<bool> autoConnectToLastDevice() async {
+    await loadLastDevice();
+    if (!hasLastDevice) {
+      showToast('No previously connected device');
+      return false;
+    }
+
+    isAutoConnecting.value = true;
+    try {
+      final device = BluetoothDevice.fromId(lastDeviceId.value);
+      gBleDevice = device;
+      gIsDeviceConnected.value = false;
+
+      final connected = await connectToDevice();
+      gIsDeviceConnected.value = connected;
+      if (connected) {
+        connectedDevice.value = [device];
+      }
+      return connected;
+    } catch (e) {
+      print("Auto-connect failed: $e");
+      showToast('Auto-connect failed');
+      return false;
+    } finally {
+      isAutoConnecting.value = false;
+    }
+  }
   Future<void> scanningMethod() async {
     print("In scanning method");
     final isScanning = FlutterBluePlus.isScanningNow;
@@ -89,6 +157,8 @@ class HomePageController extends GetxController {
       print("Services discovered in connect is $gBleServices");
 
       gIsDeviceConnected.value = true;
+      // Remember this device so it can be auto-connected to next time.
+      await _saveLastDevice(device);
       showToast('Connected');
       return true;
     } catch (e) {

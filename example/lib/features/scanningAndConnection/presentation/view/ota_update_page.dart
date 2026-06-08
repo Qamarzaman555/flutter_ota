@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_ota/ota_package.dart';
 import 'package:flutter/material.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/scanning_connection_controller.dart';
+import 'package:ota_new_protocol/routing/routes.dart';
 import 'package:get/get.dart';
 import '../../../../common/custom_button/feedback_enabled_button.dart';
 import '../../../../common/toast/show_toast.dart';
@@ -17,6 +19,41 @@ class NewOTAUpdatePage extends StatefulWidget {
 
 class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
   HomePageController homePageController = Get.find();
+
+  StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
+  bool _leavingOnDisconnect = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // If the device disconnects (after a cancel, a dropout, or a reboot once the
+    // OTA finishes) leave this screen and return to the app's home screen.
+    final BluetoothDevice? device = homePageController.gBleDevice;
+    _connectionSubscription = device?.connectionState.listen((state) {
+      if (state == BluetoothConnectionState.disconnected) {
+        _returnToHomeOnDisconnect();
+      }
+    });
+  }
+
+  void _returnToHomeOnDisconnect() {
+    if (_leavingOnDisconnect || !mounted) return;
+    _leavingOnDisconnect = true;
+
+    homePageController.gIsDeviceConnected.value = false;
+    // Stop the progress dialog from trying to dismiss itself after we navigate.
+    homePageController.showProgressDialog = false;
+
+    // Clear the navigation stack back to the home ("Flutter OTA App") screen.
+    Get.offAllNamed(AppRoutes.splash);
+    showToast('Device disconnected. Reconnect to start OTA again.');
+  }
+
+  @override
+  void dispose() {
+    _connectionSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,51 +176,136 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
 
                         // Show the progress dialog
                         // ignore_for_file: use_build_context_synchronously
+                        homePageController.showProgressDialog = true;
                         showDialog(
                           context: context,
-                          barrierDismissible: true,
+                          barrierDismissible: false,
                           builder: (context) => AlertDialog(
                             title: const Text('OTA Update in Progress'),
                             content: StreamBuilder<int>(
                               stream: esp32otaPackage.percentageStream,
                               initialData: 0,
-                              builder:
-                                  (
-                                    BuildContext context,
-                                    AsyncSnapshot<int> snapshot,
+                              builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+                                final int value = snapshot.data ?? 0;
+
+                                // The package emits cancelledValue (-1)
+                                // when the update is cancelled and
+                                // failedValue (-2) when it fails because of
+                                // a BLE error (disconnect, GATT 133, etc.).
+                                if ((value == cancelledValue ||
+                                        value == failedValue) &&
+                                    homePageController.showProgressDialog) {
+                                  final bool failed = value == failedValue;
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
                                   ) {
-                                    double progress =
-                                        snapshot.data! / 100.toDouble();
-                                    if (progress >= 1.0 &&
-                                        homePageController.showProgressDialog) {
-                                      // Dismiss the progress dialog when the OTA update is complete.
-                                      WidgetsBinding.instance.addPostFrameCallback((
-                                        _,
-                                      ) {
-                                        if (!mounted ||
-                                            !homePageController
-                                                .showProgressDialog) {
-                                          return;
-                                        }
-                                        homePageController.showProgressDialog =
-                                            false;
-                                        Navigator.of(context).pop();
-                                        // Use Get.snackbar (showToast), not
-                                        // ScaffoldMessenger — dialog context has
-                                        // no Scaffold ancestor.
-                                        showToast('OTA Update Complete');
-                                      });
+                                    if (!mounted ||
+                                        !homePageController
+                                            .showProgressDialog) {
+                                      return;
                                     }
-                                    return LinearProgressIndicator(
+                                    homePageController.showProgressDialog =
+                                        false;
+                                    Navigator.of(context).pop();
+                                    showToast(
+                                      failed
+                                          ? 'OTA Update Failed. Reconnect to the device before retrying.'
+                                          : 'OTA Update Cancelled',
+                                    );
+                                  });
+                                  return const LinearProgressIndicator(
+                                    value: 0,
+                                  );
+                                }
+
+                                double progress = value / 100.toDouble();
+                                if (progress >= 1.0 &&
+                                    homePageController.showProgressDialog) {
+                                  // Dismiss the progress dialog when the OTA update is complete.
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (!mounted ||
+                                        !homePageController
+                                            .showProgressDialog) {
+                                      return;
+                                    }
+                                    homePageController.showProgressDialog =
+                                        false;
+                                    Navigator.of(context).pop();
+                                    // Use Get.snackbar (showToast), not
+                                    // ScaffoldMessenger — dialog context has
+                                    // no Scaffold ancestor.
+                                    showToast('OTA Update Complete');
+                                  });
+                                }
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    LinearProgressIndicator(
                                       value: progress,
                                       valueColor:
                                           const AlwaysStoppedAnimation<Color>(
                                             Colors.blue,
                                           ),
                                       backgroundColor: Colors.grey[300],
-                                    );
-                                  },
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text('${(progress * 100).round()}%'),
+                                  ],
+                                );
+                              },
                             ),
+                            actions: [
+                              FeedbackEnabledButton(
+                                scaleFactor: 1.0,
+                                translationFactorX: 0.0,
+                                childWidget: Container(
+                                  //height: 30,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.rectangle,
+                                    border: Border.all(
+                                      color: Colors.transparent,
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10.0),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [secondaryColor, secondaryColor],
+                                    ),
+                                  ),
+                                  //margin: const EdgeInsets.only(top: 10.0),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 20,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "Cancel",
+                                          style: TextStyle(
+                                            color: Color(0xFFFFFFFF),
+                                            fontFamily: 'Inter',
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                onTap: () async {
+                                  await esp32otaPackage.cancelUpdate();
+                                  // Cancelling leaves the ESP32 mid-OTA. The
+                                  // device must be reconnected before another
+                                  // OTA can be started on a clean session.
+                                },
+                              ),
+                            ],
                           ),
                         );
 
@@ -191,11 +313,13 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                         await esp32otaPackage.updateFirmware(
                           device,
                           UpdateType.espidf, //Update Type
-                          FirmwareType.assets,
+                          FirmwareType.url,
                           service,
                           notifyUuid,
                           writeUuid,
-                          binFilePath: "assets/Release_v1.5.22 (1).img",
+                          // binFilePath: "assets/Release_v1.5.23-rc4.img",
+                          url:
+                              'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
                         );
                         /*if (binfile != null) {
                               await esp32otaPackage.updateFirmware(

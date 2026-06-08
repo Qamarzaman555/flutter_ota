@@ -14,10 +14,7 @@ import 'package:http/http.dart' as http;
 ///   framework (formerly represented by the integer `1`).
 /// * [UpdateType.arduino]: Firmware update based on the Arduino framework for
 ///   ESP32 (formerly represented by the integer `2`).
-enum UpdateType {
-  espidf,
-  arduino,
-}
+enum UpdateType { espidf, arduino }
 
 /// The source from which the firmware binary is loaded.
 ///
@@ -27,11 +24,7 @@ enum UpdateType {
 ///   device (formerly represented by the integer `2`).
 /// * [FirmwareType.url]: Download the firmware from a URL (formerly represented
 ///   by the integer `3`).
-enum FirmwareType {
-  assets,
-  filepicker,
-  url,
-}
+enum FirmwareType { assets, filepicker, url }
 
 // Abstract class defining the structure of an OTA package
 abstract class OtaPackage {
@@ -46,33 +39,69 @@ abstract class OtaPackage {
   /// [binFilePath]: The file path of the firmware binary (optional).
   /// [url]: The URL to fetch firmware from (optional).
   Future<void> updateFirmware(
-      BluetoothDevice device,
-      UpdateType updateType,
-      FirmwareType firmwareType,
-      BluetoothService service,
-      BluetoothCharacteristic dataUUID,
-      BluetoothCharacteristic controlUUID,
-      {String? binFilePath,
-      String? url});
+    BluetoothDevice device,
+    UpdateType updateType,
+    FirmwareType firmwareType,
+    BluetoothService service,
+    BluetoothCharacteristic dataUUID,
+    BluetoothCharacteristic controlUUID, {
+    String? binFilePath,
+    String? url,
+  });
 
   /// Property to track firmware update status
   bool firmwareUpdate = false;
 
-  /// Stream to provide progress percentage
+  /// Stream to provide progress percentage.
+  ///
+  /// When an update is cancelled via [cancelUpdate], a value of [cancelledValue]
+  /// (`-1`) is emitted so listeners can react to the cancellation. If the update
+  /// fails because of a BLE error (e.g. the device disconnects mid-transfer or a
+  /// write fails with a GATT error), [failedValue] (`-2`) is emitted instead of
+  /// throwing, so the caller can update the UI without the app crashing.
   Stream<int> get percentageStream;
+
+  /// Whether an OTA update is currently in progress.
+  bool get isUpdating;
+
+  /// Requests cancellation of an in-progress OTA update.
+  ///
+  /// This stops sending further firmware data and tears down any active
+  /// notification subscription. It is safe to call even when no update is
+  /// running. After cancelling, [cancelledValue] is emitted on
+  /// [percentageStream].
+  ///
+  /// IMPORTANT: Cancelling only stops the app from sending data; it does NOT
+  /// reset the OTA state machine on the ESP32, which is left mid-update. The
+  /// caller MUST disconnect and reconnect (re-discovering services) before
+  /// starting a new OTA on the same device. Starting another OTA on the same
+  /// connection leaves the two sides out of sync and typically results in a BLE
+  /// disconnect / GATT error.
+  Future<void> cancelUpdate();
 }
+
+/// Value emitted on [OtaPackage.percentageStream] when an update is cancelled.
+const int cancelledValue = -1;
+
+/// Value emitted on [OtaPackage.percentageStream] when an update fails because
+/// of a BLE error (e.g. the device disconnects or a write fails with a GATT
+/// error). The package emits this instead of throwing so the app does not crash.
+const int failedValue = -2;
 
 /// A class responsible for handling BLE repository operations.
 class BleRepository {
   // Write data to a Bluetooth characteristic
   Future<void> writeDataCharacteristic(
-      BluetoothCharacteristic characteristic, Uint8List data) async {
+    BluetoothCharacteristic characteristic,
+    Uint8List data,
+  ) async {
     await characteristic.write(data);
   }
 
   /// Read data from a Bluetooth characteristic
   Future<List<int>> readCharacteristic(
-      BluetoothCharacteristic characteristic) async {
+    BluetoothCharacteristic characteristic,
+  ) async {
     return await characteristic.read();
   }
 
@@ -88,22 +117,53 @@ class Esp32OtaPackage implements OtaPackage {
   int mtu = 400; // Maximum Transmission Unit size
   int part = 16000; // Part size for firmware update
   final BluetoothCharacteristic
-      notifyCharacteristic; // Characteristic for notifications
+  notifyCharacteristic; // Characteristic for notifications
   final BluetoothCharacteristic
-      writeCharacteristic; //Characteristic for writing data
+  writeCharacteristic; //Characteristic for writing data
   StreamSubscription?
-      subscription; // declare subscription as an instance variable
+  subscription; // declare subscription as an instance variable
   bool firmwareUpdate = false; // Flag indicating firmware update status
+
+  bool _cancelRequested = false; // Flag indicating a cancellation was requested
+  bool _isUpdating = false; // Flag indicating an update is currently running
 
   final StreamController<int> _percentageController =
       StreamController<int>.broadcast();
 
   @override
-  Stream<int> get percentageStream =>
-      _percentageController.stream; // Getter for percentage update stream
+  Stream<int> get percentageStream => _percentageController.stream; // Getter for percentage update stream
+
+  @override
+  bool get isUpdating => _isUpdating;
 
   /// Constructor
   Esp32OtaPackage(this.notifyCharacteristic, this.writeCharacteristic);
+
+  /// Requests cancellation of an in-progress OTA update.
+  @override
+  Future<void> cancelUpdate() async {
+    if (!_isUpdating) return;
+    print('OTA update cancellation requested');
+    _cancelRequested = true;
+    await subscription?.cancel();
+    subscription = null;
+  }
+
+  /// Centralised cleanup for a failed/interrupted OTA.
+  ///
+  /// BLE errors (device disconnect, GATT 133, etc.) are reported on
+  /// [percentageStream] instead of being thrown, so a mid-transfer failure does
+  /// not surface as an unhandled exception and crash the app. If the failure was
+  /// caused by a user cancellation, [cancelledValue] is emitted; otherwise
+  /// [failedValue] is emitted.
+  void _handleUpdateError(Object error) {
+    print('OTA update aborted due to BLE error: $error');
+    firmwareUpdate = false;
+    _isUpdating = false;
+    subscription?.cancel();
+    subscription = null;
+    _percentageController.add(_cancelRequested ? cancelledValue : failedValue);
+  }
 
   /// Function to read binary firmware file and split it into chunks
   Future<List<Uint8List>> _readBinaryFile(String filePath, int mtuSize) async {
@@ -129,8 +189,11 @@ class Esp32OtaPackage implements OtaPackage {
   }
 
   /// Get firmware based on firmwareType
-  Future<List<Uint8List>> getFirmware(FirmwareType firmwareType, int mtuSize,
-      {String? binFilePath}) {
+  Future<List<Uint8List>> getFirmware(
+    FirmwareType firmwareType,
+    int mtuSize, {
+    String? binFilePath,
+  }) {
     if (firmwareType == FirmwareType.filepicker) {
       print("in package mtu size is $mtuSize");
       return _getFirmwareFromPicker(mtuSize - 3);
@@ -196,15 +259,18 @@ class Esp32OtaPackage implements OtaPackage {
       throw 'Error getting firmware data: $e';
     }
   }
+
   Future<List<Uint8List>> _getFirmwareFromUrl(String url, int mtuSize) async {
     try {
-      final response =
-      await http.get(Uri.parse(url)).timeout(Duration(seconds: 10));
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(Duration(seconds: 10));
 
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
         final List<int> bytes = response.bodyBytes;
-        final int chunkSize = mtuSize - 3;
+       
+        final int chunkSize = mtuSize;
         List<Uint8List> chunks = [];
         for (int i = 0; i < bytes.length; i += chunkSize) {
           int end = i + chunkSize;
@@ -227,7 +293,9 @@ class Esp32OtaPackage implements OtaPackage {
 
   Future<Uint8List> _getFirmwareFromUrlArduino(String url, int mtuSize) async {
     try {
-      final response = await http.get(Uri.parse(url)).timeout(Duration(seconds: 10));
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(Duration(seconds: 10));
 
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
@@ -240,7 +308,10 @@ class Esp32OtaPackage implements OtaPackage {
             end = bytes.length;
           }
           Uint8List chunk = Uint8List.fromList(bytes.sublist(i, end));
-          firmware = Uint8List.fromList([...firmware, ...chunk]); // Concatenate the chunks
+          firmware = Uint8List.fromList([
+            ...firmware,
+            ...chunk,
+          ]); // Concatenate the chunks
         }
         return firmware;
       } else {
@@ -255,7 +326,9 @@ class Esp32OtaPackage implements OtaPackage {
 
   /// Open file, read bytes, and split into chunks
   Future<List<Uint8List>> _openFileAndGetFirmwareData(
-      PlatformFile file, int mtuSize) async {
+    PlatformFile file,
+    int mtuSize,
+  ) async {
     final bytes = await File(file.path!).readAsBytes();
     List<Uint8List> firmwareData = [];
     print('Before Dividing firmware data into chunks');
@@ -271,6 +344,10 @@ class Esp32OtaPackage implements OtaPackage {
 
   /// sendPart function which is used to send parts to the esp32
   Future<void> sendPart(int position, Uint8List data) async {
+    if (_cancelRequested) {
+      print('sendPart aborted due to cancellation');
+      return;
+    }
     final bleRepo = BleRepository();
     int start = (position * part);
     int end = (position + 1) * part;
@@ -281,7 +358,8 @@ class Esp32OtaPackage implements OtaPackage {
     print("Parts are $parts");
     for (int i = 0; i < parts; i++) {
       print(
-          "created $i parts"); //<------------------------------ Print to debug
+        "created $i parts",
+      ); //<------------------------------ Print to debug
       Uint8List toSend = Uint8List(mtu + 2);
       toSend[0] = 0XFB;
       toSend[1] = i;
@@ -329,7 +407,7 @@ class Esp32OtaPackage implements OtaPackage {
       ((end - start) ~/ 256),
       ((end - start) % 256),
       (position ~/ 256),
-      (position % 256)
+      (position % 256),
     ]);
 
     /// print statement below should be replaced with actual sending code
@@ -341,194 +419,241 @@ class Esp32OtaPackage implements OtaPackage {
 
   @override
   Future<void> updateFirmware(
-      BluetoothDevice device,
-      UpdateType updateType,
-      FirmwareType firmwareType,
-      BluetoothService service,
-      BluetoothCharacteristic dataUUID,
-      BluetoothCharacteristic controlUUID,
-      {String? binFilePath,
-      String? url}) async {
-    if (updateType == UpdateType.espidf) {
-      final bleRepo = BleRepository();
+    BluetoothDevice device,
+    UpdateType updateType,
+    FirmwareType firmwareType,
+    BluetoothService service,
+    BluetoothCharacteristic dataUUID,
+    BluetoothCharacteristic controlUUID, {
+    String? binFilePath,
+    String? url,
+  }) async {
+    _cancelRequested = false;
+    _isUpdating = true;
+    try {
+      if (updateType == UpdateType.espidf) {
+        final bleRepo = BleRepository();
 
-      /// Get MTU size from the device
-      int mtuSize = 200;
+        /// Get MTU size from the device
+        int mtuSize = 500;
 
-      print("MTU size of current device $mtuSize");
+        print("MTU size of current device $mtuSize");
 
-      /// Prepare a byte list to write MTU size to controlCharacteristic
-      Uint8List byteList = Uint8List(2);
-      byteList[0] = mtuSize & 0xFF;
-      byteList[1] = (mtuSize >> 8) & 0xFF;
+        /// Prepare a byte list to write MTU size to controlCharacteristic
+        Uint8List byteList = Uint8List(2);
+        byteList[0] = mtuSize & 0xFF;
+        byteList[1] = (mtuSize >> 8) & 0xFF;
 
-      List<Uint8List> binaryChunks;
+        List<Uint8List> binaryChunks;
 
-      /// Choose firmware source based on firmwareType
-      if (firmwareType == FirmwareType.assets &&
-          binFilePath != null &&
-          binFilePath.isNotEmpty) {
-        binaryChunks = await _readBinaryFile(binFilePath, mtuSize);
-      } else if (firmwareType == FirmwareType.filepicker) {
-        binaryChunks = await _getFirmwareFromPicker(mtuSize);
-      } else if (firmwareType == FirmwareType.url &&
-          url != null &&
-          url.isNotEmpty) {
-        binaryChunks = await _getFirmwareFromUrl(url, mtuSize);
-      } else {
-        binaryChunks = [];
-      }
+        /// Choose firmware source based on firmwareType
+        if (firmwareType == FirmwareType.assets &&
+            binFilePath != null &&
+            binFilePath.isNotEmpty) {
+          binaryChunks = await _readBinaryFile(binFilePath, mtuSize);
+        } else if (firmwareType == FirmwareType.filepicker) {
+          binaryChunks = await _getFirmwareFromPicker(mtuSize);
+        } else if (firmwareType == FirmwareType.url &&
+            url != null &&
+            url.isNotEmpty) {
+          binaryChunks = await _getFirmwareFromUrl(url, mtuSize);
+        } else {
+          binaryChunks = [];
+        }
 
-      /// Write x01 to the controlCharacteristic and check if it returns value of 0x02
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, byteList);
-      await bleRepo.writeDataCharacteristic(
-          notifyCharacteristic, Uint8List.fromList([1]));
+        /// Write x01 to the controlCharacteristic and check if it returns value of 0x02
+        await bleRepo.writeDataCharacteristic(writeCharacteristic, byteList);
+        await bleRepo.writeDataCharacteristic(
+          notifyCharacteristic,
+          Uint8List.fromList([1]),
+        );
 
-      /// Read value from controlCharacteristic
-      List<int> value = await bleRepo
-          .readCharacteristic(notifyCharacteristic)
-          .timeout(Duration(seconds: 10));
-      print('value returned is this ------- ${value[0]}');
+        /// Read value from controlCharacteristic
+        List<int> value = await bleRepo
+            .readCharacteristic(notifyCharacteristic)
+            .timeout(Duration(seconds: 10));
+        print('value returned is this ------- ${value[0]}');
 
-      int packageNumber = 0;
-      print('Before Progress');
-      for (Uint8List chunk in binaryChunks) {
-        /// Write firmware chunks to dataCharacteristic
-        await bleRepo.writeDataCharacteristic(writeCharacteristic, chunk);
-        packageNumber++;
+        int packageNumber = 0;
+        print('Before Progress');
+        for (Uint8List chunk in binaryChunks) {
+          /// Abort sending if a cancellation was requested
+          if (_cancelRequested) {
+            print('OTA update cancelled while sending firmware');
+            firmwareUpdate = false;
+            _percentageController.add(cancelledValue);
+            _isUpdating = false;
+            return;
+          }
 
-        double progress = (packageNumber / binaryChunks.length) * 100;
-        int roundedProgress = progress.round(); // Rounded off progress value
+          /// Write firmware chunks to dataCharacteristic
+          await bleRepo.writeDataCharacteristic(writeCharacteristic, chunk);
+          packageNumber++;
+
+          double progress = (packageNumber / binaryChunks.length) * 100;
+          int roundedProgress = progress.round(); // Rounded off progress value
+          print(
+            'Writing package number $packageNumber of ${binaryChunks.length} to ESP32',
+          );
+          print('Progress: $roundedProgress%');
+          _percentageController.add(roundedProgress);
+        }
+
+        /// Write x04 to the controlCharacteristic to finish the update process
+        await bleRepo.writeDataCharacteristic(
+          notifyCharacteristic,
+          Uint8List.fromList([4]),
+        );
+
+        /// Check if controlCharacteristic reads 0x05, indicating OTA update finished
+        value = await bleRepo
+            .readCharacteristic(notifyCharacteristic)
+            .timeout(Duration(seconds: 600));
+        print('value returned is this ------- ${value[0]}');
+
+        if (value[0] == 5) {
+          print('OTA update finished');
+          firmwareUpdate = true; // Firmware update was successful
+        } else {
+          print('OTA update failed');
+          firmwareUpdate = false; // Firmware update failed
+        }
+        _isUpdating = false;
+      } else if (updateType == UpdateType.arduino) {
+        final bleRepo = BleRepository();
+
+        /// Get MTU size from the device
+        int mtuSize = await device.mtu.first;
+
+        print("MTU size of current device $mtuSize");
+
+        /// Prepare a byte list to write MTU size to controlCharacteristic
+        Uint8List byteList = Uint8List(2);
+        byteList[0] = 200 & 0xFF;
+        byteList[1] = (200 >> 8) & 0xFF;
+        Uint8List? binFile;
+
+        /// Choose firmware source based on firmwareType
+        if (firmwareType == FirmwareType.assets && binFilePath != null) {
+          ByteData fileData = await rootBundle.load(binFilePath);
+          List<int> bytes = fileData.buffer.asUint8List();
+          binFile = Uint8List.fromList(bytes);
+          print("Bin file after conversion is $binFile");
+          print("Bin file length after conversion is ${binFile.length}");
+        } else if (firmwareType == FirmwareType.filepicker) {
+          binFile = await _getFirmwareFromPickerArduino(200);
+          print("binFile is $binFile");
+        } else if (firmwareType == FirmwareType.url &&
+            url != null &&
+            url.isNotEmpty) {
+          binFile = await _getFirmwareFromUrlArduino(url, mtuSize);
+        } else {
+          binFile = Uint8List(0);
+        }
+        print('before printing file Length');
+        int fileLen = binFile.length;
+        int fileParts = (fileLen / part).ceil();
+        print("this is the fileParts :  $fileParts");
+
+        ///1. Start stream which listens to the notification advertisement
+        await notifyCharacteristic.setNotifyValue(true);
+        subscription = notifyCharacteristic.onValueReceived.listen((
+          value,
+        ) async {
+          /// Stop reacting to notifications once a cancellation is requested
+          if (_cancelRequested) {
+            print('OTA update cancelled while sending firmware');
+            await subscription?.cancel();
+            subscription = null;
+            firmwareUpdate = false;
+            _percentageController.add(cancelledValue);
+            _isUpdating = false;
+            return;
+          }
+
+          try {
+            print("received value is $value");
+            double progress = (value[2] / fileParts) * 100;
+            int roundedProgress = progress.round();
+
+            /// Rounded off progress value
+            print('Writing part number ${value[2]} of $fileParts to ESP32');
+            print('Progress: $roundedProgress%');
+            _percentageController.add(roundedProgress);
+            if (value[0] == 0xF1)
+            /// this basically is checking listener stream
+            {
+              Uint8List bytes = Uint8List.fromList([value[1], value[2]]);
+              ByteData byteData = ByteData.sublistView(bytes);
+              int nxt = byteData.getUint16(0);
+
+              /// Used getUint16 for a 2-byte integer
+              print("--------- nxt -------- $nxt");
+              await sendPart(nxt, binFile!);
+            }
+            if (value[0] == 0x0F) {
+              print("OTA Update complete");
+              firmwareUpdate = true;
+              _isUpdating = false;
+            }
+            if (value[0] == 0xF2) {
+              print("New bin file installation begins on esp32");
+            }
+          } catch (e) {
+            // Writes triggered from the notification listener run after
+            // updateFirmware has returned, so guard them here too.
+            _handleUpdateError(e);
+          }
+        });
+
+        ///2. Send 0xFD first to start reading
+        Uint8List byteListData = Uint8List(1);
+        byteList[0] = 0xFD;
+        await bleRepo.writeDataCharacteristic(
+          writeCharacteristic,
+          byteListData,
+        );
+
+        ///3. Send 0xFE appended with other info
+        ///--------> 2nd step create and then send file size
+        Uint8List fileSize = Uint8List(5);
+        fileSize[0] = 0xFE; // The fixed byte
+        fileSize[1] =
+            (fileLen >> 24) & 0xFF; // Most significant byte of fileLen
+        fileSize[2] = (fileLen >> 16) & 0xFF; // Second most significant byte
+        fileSize[3] = (fileLen >> 8) & 0xFF; // Third most significant byte
+        fileSize[4] = fileLen & 0xFF; // Least significant byte
         print(
-            'Writing package number $packageNumber of ${binaryChunks.length} to ESP32');
+          "this is file size : $fileSize",
+        ); // this is where it is sent to esp32
+        await bleRepo.writeDataCharacteristic(writeCharacteristic, fileSize);
+
+        ///4. Send 0xFF appended with other info - see code below
+        ///--------> 3rd step create and then send otaInfo
+        Uint8List otaInfo = Uint8List(5);
+        otaInfo[0] = 0xFF;
+        otaInfo[1] = (fileParts ~/ 256);
+        otaInfo[2] = (fileParts % 256);
+        otaInfo[3] = (mtu ~/ 256);
+        otaInfo[4] = (mtu % 256);
+        print(
+          "this is otaInfo : $otaInfo",
+        ); // this is where it is sent to esp32
+        await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
+
+        ///5. Divide bin file into parts
+        int packageNumber = 0;
+        sendPart(0, binFile);
+        double progress = (packageNumber / fileParts) * 100;
+        int roundedProgress = progress.round(); // Rounded off progress value
+        print('Writing part number $packageNumber of $fileParts to ESP32');
         print('Progress: $roundedProgress%');
         _percentageController.add(roundedProgress);
       }
-
-      /// Write x04 to the controlCharacteristic to finish the update process
-      await bleRepo.writeDataCharacteristic(
-          notifyCharacteristic, Uint8List.fromList([4]));
-
-      /// Check if controlCharacteristic reads 0x05, indicating OTA update finished
-      value = await bleRepo
-          .readCharacteristic(notifyCharacteristic)
-          .timeout(Duration(seconds: 600));
-      print('value returned is this ------- ${value[0]}');
-
-      if (value[0] == 5) {
-        print('OTA update finished');
-        firmwareUpdate = true; // Firmware update was successful
-      } else {
-        print('OTA update failed');
-        firmwareUpdate = false; // Firmware update failed
-      }
-    } else if (updateType == UpdateType.arduino) {
-
-      final bleRepo = BleRepository();
-
-      /// Get MTU size from the device
-      int mtuSize = await device.mtu.first;
-
-      print("MTU size of current device $mtuSize");
-
-      /// Prepare a byte list to write MTU size to controlCharacteristic
-      Uint8List byteList = Uint8List(2);
-      byteList[0] = 200 & 0xFF;
-      byteList[1] = (200 >> 8) & 0xFF;
-      Uint8List? binFile;
-
-      /// Choose firmware source based on firmwareType
-      if (firmwareType == FirmwareType.assets && binFilePath != null) {
-        ByteData fileData = await rootBundle.load(binFilePath);
-        List<int> bytes = fileData.buffer.asUint8List();
-        binFile = Uint8List.fromList(bytes);
-        print("Bin file after conversion is $binFile");
-        print("Bin file length after conversion is ${binFile.length}");
-      } else if (firmwareType == FirmwareType.filepicker) {
-        binFile = await _getFirmwareFromPickerArduino(200);
-        print("binFile is $binFile");
-      } else if (firmwareType == FirmwareType.url &&
-          url != null &&
-          url.isNotEmpty) {
-        binFile = await _getFirmwareFromUrlArduino(url, mtuSize);
-      } else {
-        binFile = Uint8List(0);
-      }
-      print('before printing file Length');
-      int fileLen = binFile.length;
-      int fileParts = (fileLen / part).ceil();
-      print("this is the fileParts :  $fileParts");
-
-      ///1. Start stream which listens to the notification advertisement
-      await notifyCharacteristic.setNotifyValue(true);
-      subscription = notifyCharacteristic.onValueReceived.listen((value) async {
-        print("received value is $value");
-        double progress = (value[2] / fileParts) * 100;
-        int roundedProgress = progress.round();
-
-        /// Rounded off progress value
-        print('Writing part number ${value[2]} of $fileParts to ESP32');
-        print('Progress: $roundedProgress%');
-        _percentageController.add(roundedProgress);
-        if (value[0] == 0xF1)
-
-        /// this basically is checking listener stream
-        {
-          Uint8List bytes = Uint8List.fromList([
-            value[1],
-            value[2],
-          ]);
-          ByteData byteData = ByteData.sublistView(bytes);
-          int nxt = byteData.getUint16(0);
-
-          /// Used getUint16 for a 2-byte integer
-          print("--------- nxt -------- $nxt");
-          sendPart(nxt, binFile!);
-        }
-        if (value[0] == 0x0F) {
-          print("OTA Update complete");
-        }
-        if (value[0] == 0xF2) {
-          print("New bin file installation begins on esp32");
-        }
-      });
-
-      ///2. Send 0xFD first to start reading
-      Uint8List byteListData = Uint8List(1);
-      byteList[0] = 0xFD;
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, byteListData);
-
-      ///3. Send 0xFE appended with other info
-      ///--------> 2nd step create and then send file size
-      Uint8List fileSize = Uint8List(5);
-      fileSize[0] = 0xFE; // The fixed byte
-      fileSize[1] = (fileLen >> 24) & 0xFF; // Most significant byte of fileLen
-      fileSize[2] = (fileLen >> 16) & 0xFF; // Second most significant byte
-      fileSize[3] = (fileLen >> 8) & 0xFF; // Third most significant byte
-      fileSize[4] = fileLen & 0xFF; // Least significant byte
-      print(
-          "this is file size : $fileSize"); // this is where it is sent to esp32
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, fileSize);
-
-      ///4. Send 0xFF appended with other info - see code below
-      ///--------> 3rd step create and then send otaInfo
-      Uint8List otaInfo = Uint8List(5);
-      otaInfo[0] = 0xFF;
-      otaInfo[1] = (fileParts ~/ 256);
-      otaInfo[2] = (fileParts % 256);
-      otaInfo[3] = (mtu ~/ 256);
-      otaInfo[4] = (mtu % 256);
-      print("this is otaInfo : $otaInfo"); // this is where it is sent to esp32
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
-
-      ///5. Divide bin file into parts
-      int packageNumber = 0;
-      sendPart(0, binFile);
-      double progress = (packageNumber / fileParts) * 100;
-      int roundedProgress = progress.round(); // Rounded off progress value
-      print('Writing part number $packageNumber of $fileParts to ESP32');
-      print('Progress: $roundedProgress%');
-      _percentageController.add(roundedProgress);
+    } catch (e) {
+      // A BLE error (disconnect, GATT 133, etc.) must not crash the app: report
+      // it on the stream and clean up instead of letting it propagate.
+      _handleUpdateError(e);
     }
   }
 }

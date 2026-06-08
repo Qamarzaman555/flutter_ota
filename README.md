@@ -101,6 +101,34 @@ if (otaPackage.firmwareUpdate) {
 }
 ```
 
+## Cancelling an update
+
+Call `cancelUpdate()` to stop an in-progress OTA. When this happens, the package
+emits `cancelledValue` (`-1`) on `percentageStream`. If the update instead fails
+because of a BLE error (the device disconnects mid-transfer, a write fails with a
+GATT 133 error, etc.), the package emits `failedValue` (`-2`) on
+`percentageStream` rather than throwing, so the failure does not crash your app.
+
+```dart
+otaPackage.percentageStream.listen((progress) {
+  if (progress == cancelledValue) {
+    // Update was cancelled by the user.
+  } else if (progress == failedValue) {
+    // Update failed because of a BLE error.
+  } else {
+    // Normal progress (0-100).
+  }
+});
+```
+
+> **Important:** Cancelling only stops the app from sending data. It does **not**
+> reset the OTA state machine on the ESP32, which is left mid-update. The caller
+> **must disconnect and reconnect** (re-discovering services) before starting a
+> new OTA on the same device. Starting another OTA on the same connection leaves
+> the two sides out of sync and typically results in a BLE disconnect / GATT
+> error. See the example app for how it disconnects after a cancel and prompts
+> the user to reconnect.
+
 ## Example Application
 
 The example application code is available in the example folder of this repository.

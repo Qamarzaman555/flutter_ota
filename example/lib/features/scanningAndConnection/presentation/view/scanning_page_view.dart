@@ -11,7 +11,7 @@ import '../../../../utils/colors.dart';
 import '../controller/scanning_connection_controller.dart';
 
 class ScanningPageView extends StatefulWidget {
-  const ScanningPageView({Key? key}) : super(key: key);
+  const ScanningPageView({super.key});
 
   @override
   State<ScanningPageView> createState() => _ScanningPageViewState();
@@ -122,7 +122,7 @@ class _ScanningPageViewState extends State<ScanningPageView>
                                 children: [
                                   Text(
                                     homePageController
-                                        .scannedDevicesList[index].localName,
+                                        .scannedDevicesList[index].advName,
                                     style: const TextStyle(
                                       color: Color(0xFFFFFFFF),
                                       fontFamily: 'Inter',
