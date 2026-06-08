@@ -113,6 +113,47 @@ const int cancelledValue = -1;
 /// error). The package emits this instead of throwing so the app does not crash.
 const int failedValue = -2;
 
+/// Base class for all OTA-related errors thrown by this package.
+///
+/// Catch this to handle any failure originating from the OTA flow (firmware
+/// loading, download, validation, etc.) in a type-safe way instead of matching
+/// on raw [String] messages.
+class OtaException implements Exception {
+  OtaException(this.message, [this.cause]);
+
+  /// Human-readable description of what went wrong.
+  final String message;
+
+  /// The underlying error that caused this exception, if any.
+  final Object? cause;
+
+  @override
+  String toString() =>
+      cause == null ? 'OtaException: $message' : 'OtaException: $message ($cause)';
+}
+
+/// Thrown when a firmware source yields no data.
+///
+/// Examples: an empty asset/file, an empty HTTP response body, or no file
+/// selected from the picker. Signals the caller to abort before any OTA writes
+/// are sent to the device.
+class EmptyFirmwareException extends OtaException {
+  EmptyFirmwareException([
+    super.message =
+        'Firmware is empty. Please provide a valid, non-empty firmware binary.',
+  ]);
+}
+
+/// Thrown when downloading firmware over HTTP fails (non-200 status, timeout,
+/// or network error).
+class FirmwareDownloadException extends OtaException {
+  FirmwareDownloadException(String message, {this.statusCode, Object? cause})
+    : super(message, cause);
+
+  /// The HTTP status code, when the failure was an unsuccessful response.
+  final int? statusCode;
+}
+
 /// A class responsible for handling BLE repository operations.
 class BleRepository {
   // Write data to a Bluetooth characteristic
@@ -227,7 +268,7 @@ class Esp32OtaPackage implements OtaPackage {
   /// caused by a user cancellation, [cancelledValue] is emitted; otherwise
   /// [failedValue] is emitted.
   void _handleUpdateError(Object error) {
-    _logger.e('OTA update aborted due to BLE error', error: error);
+    _logger.e('OTA update aborted', error: error);
     firmwareUpdate = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
@@ -270,12 +311,16 @@ class Esp32OtaPackage implements OtaPackage {
       final firmwareData = await _openFileAndGetFirmwareData(file, mtuSize);
 
       if (firmwareData.isEmpty) {
-        throw 'Empty firmware data. Please select a valid firmware file.';
+        throw EmptyFirmwareException(
+          'Empty firmware data. Please select a valid firmware file.',
+        );
       }
 
       return firmwareData;
+    } on OtaException {
+      rethrow;
     } catch (e) {
-      throw 'Error getting firmware data: $e';
+      throw OtaException('Error getting firmware data', e);
     }
   }
 
@@ -300,9 +345,17 @@ class Esp32OtaPackage implements OtaPackage {
       final bytes = await File(file.path!).readAsBytes();
       binfiledata = Uint8List.fromList(bytes);
 
+      if (binfiledata.isEmpty) {
+        throw EmptyFirmwareException(
+          'Empty firmware data. Please select a valid firmware file.',
+        );
+      }
+
       return binfiledata;
+    } on OtaException {
+      rethrow;
     } catch (e) {
-      throw 'Error getting firmware data: $e';
+      throw OtaException('Error getting firmware data', e);
     }
   }
 
@@ -315,6 +368,13 @@ class Esp32OtaPackage implements OtaPackage {
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
         final List<int> bytes = response.bodyBytes;
+
+        /// Reject an empty response body before chunking so we fail early.
+        if (bytes.isEmpty) {
+          throw EmptyFirmwareException(
+            'Downloaded firmware is empty (0 bytes) from $url.',
+          );
+        }
 
         final int chunkSize = mtuSize;
         List<Uint8List> chunks = [];
@@ -329,11 +389,16 @@ class Esp32OtaPackage implements OtaPackage {
         return chunks;
       } else {
         /// Handle HTTP error (e.g., status code is not 200)
-        throw 'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}';
+        throw FirmwareDownloadException(
+          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
+          statusCode: response.statusCode,
+        );
       }
+    } on OtaException {
+      rethrow;
     } catch (e) {
       /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw 'Error fetching firmware from URL: $e';
+      throw FirmwareDownloadException('Error fetching firmware from URL', cause: e);
     }
   }
 
@@ -346,6 +411,14 @@ class Esp32OtaPackage implements OtaPackage {
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
         final List<int> bytes = response.bodyBytes;
+
+        /// Reject an empty response body before chunking so we fail early.
+        if (bytes.isEmpty) {
+          throw EmptyFirmwareException(
+            'Downloaded firmware is empty (0 bytes) from $url.',
+          );
+        }
+
         final int chunkSize = mtuSize - 3;
         Uint8List firmware = Uint8List(0); // Initialize an empty Uint8List
         for (int i = 0; i < bytes.length; i += chunkSize) {
@@ -362,11 +435,16 @@ class Esp32OtaPackage implements OtaPackage {
         return firmware;
       } else {
         /// Handle HTTP error (e.g., status code is not 200)
-        throw 'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}';
+        throw FirmwareDownloadException(
+          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
+          statusCode: response.statusCode,
+        );
       }
+    } on OtaException {
+      rethrow;
     } catch (e) {
       /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw 'Error fetching firmware from URL: $e';
+      throw FirmwareDownloadException('Error fetching firmware from URL', cause: e);
     }
   }
 
@@ -498,6 +576,12 @@ class Esp32OtaPackage implements OtaPackage {
           binaryChunks = [];
         }
 
+        /// Fail early on empty firmware: do NOT start the OTA handshake/writes,
+        /// otherwise the device is left mid-update with nothing to flash.
+        if (binaryChunks.isEmpty) {
+          throw EmptyFirmwareException();
+        }
+
         /// Write x01 to the controlCharacteristic and check if it returns value of 0x02
         await bleRepo.writeDataCharacteristic(writeCharacteristic, byteList);
         await bleRepo.writeDataCharacteristic(
@@ -587,6 +671,13 @@ class Esp32OtaPackage implements OtaPackage {
         } else {
           binFile = Uint8List(0);
         }
+
+        /// Fail early on empty firmware: do NOT start the notification stream or
+        /// handshake, otherwise the device is left mid-update with nothing to flash.
+        if (binFile.isEmpty) {
+          throw EmptyFirmwareException();
+        }
+
         int fileLen = binFile.length;
         int fileParts = (fileLen / part).ceil();
         _logger.d('Firmware length: $fileLen bytes, file parts: $fileParts');

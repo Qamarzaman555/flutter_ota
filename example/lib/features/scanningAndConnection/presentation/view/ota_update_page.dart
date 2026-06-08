@@ -118,7 +118,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
 
                   if (device == null || services.isEmpty) {
                     showToast("Connect to device first");
-                    debugPrint("Device or services not available for OTA update");
+                    debugPrint(
+                      "Device or services not available for OTA update",
+                    );
                     return;
                   }
 
@@ -313,10 +315,12 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                         await esp32otaPackage.updateFirmware(
                           device,
                           UpdateType.espidf, //Update Type
-                          FirmwareType.filepicker,
+                          FirmwareType.url,
                           // binFilePath: "assets/Release_v1.5.23-rc4.img",
+                          // url:
+                          // 'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
                           url:
-                              'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
+                              'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Release_v1.5.22%20(1).img?alt=media&token=6cd5dbf5-8da8-44a5-add3-63c5106a27f1',
                           mtuSize: 500,
                         );
                         /*if (binfile != null) {

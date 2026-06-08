@@ -91,7 +91,6 @@ class Esp32OtaPackage implements OtaPackage {
     //return [Uint8List.fromList(bytes)];
   }
 
-  // Convert Uint8List to List<int>
   List<int> uint8ListToIntList(Uint8List uint8List) {
     return uint8List.toList();
   }
