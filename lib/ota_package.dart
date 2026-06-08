@@ -250,27 +250,6 @@ class Esp32OtaPackage implements OtaPackage {
     return firmwareData; // Return firmware data chunks
   }
 
-  /// Convert `Uint8List` to `List<int>`
-  List<int> uint8ListToIntList(Uint8List uint8List) {
-    return uint8List.toList();
-  }
-
-  /// Get firmware based on firmwareType
-  Future<List<Uint8List>> getFirmware(
-    FirmwareType firmwareType,
-    int mtuSize, {
-    String? binFilePath,
-  }) {
-    if (firmwareType == FirmwareType.filepicker) {
-      _logger.d('Chunk size (MTU) for firmware: $mtuSize');
-      return _getFirmwareFromPicker(mtuSize - 3);
-    } else if (firmwareType == FirmwareType.assets && binFilePath != null) {
-      return _readBinaryFile(binFilePath, mtuSize);
-    } else {
-      return Future.value([]); // Return empty list for other cases
-    }
-  }
-
   /// Get firmware chunks from file picker
   Future<List<Uint8List>> _getFirmwareFromPicker(int mtuSize) async {
     _logger.d('Chunk size (MTU) in file picker: $mtuSize');
