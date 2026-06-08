@@ -33,9 +33,6 @@ abstract class OtaPackage {
   /// [device]: The Bluetooth device to update firmware on.
   /// [updateType]: The type of update operation.
   /// [firmwareType]: The type of firmware to update.
-  /// [service]: The Bluetooth service for firmware update.
-  /// [dataUUID]: The UUID of the Bluetooth characteristic for data transfer.
-  /// [controlUUID]: The UUID of the Bluetooth characteristic for control commands.
   /// [binFilePath]: The file path of the firmware binary (optional).
   /// [url]: The URL to fetch firmware from (optional).
   /// [mtuSize]: The chunk size (in bytes) used to split the firmware into
@@ -43,10 +40,7 @@ abstract class OtaPackage {
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
-    FirmwareType firmwareType,
-    BluetoothService service,
-    BluetoothCharacteristic dataUUID,
-    BluetoothCharacteristic controlUUID, {
+    FirmwareType firmwareType, {
     String? binFilePath,
     String? url,
     int mtuSize,
@@ -424,10 +418,7 @@ class Esp32OtaPackage implements OtaPackage {
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
-    FirmwareType firmwareType,
-    BluetoothService service,
-    BluetoothCharacteristic dataUUID,
-    BluetoothCharacteristic controlUUID, {
+    FirmwareType firmwareType, {
     String? binFilePath,
     String? url,
     int mtuSize = 500,

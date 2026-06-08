@@ -71,11 +71,9 @@ await otaPackage.updateFirmware(
   device,
   updateType,
   firmwareType,
-  service,
-  dataCharacteristic,
-  notifyCharacteristic,
   binFilePath: binFilePath,
   url: url,
+  mtuSize: mtuSize,
 );
 ```
 
