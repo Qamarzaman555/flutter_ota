@@ -38,6 +38,8 @@ abstract class OtaPackage {
   /// [controlUUID]: The UUID of the Bluetooth characteristic for control commands.
   /// [binFilePath]: The file path of the firmware binary (optional).
   /// [url]: The URL to fetch firmware from (optional).
+  /// [mtuSize]: The chunk size (in bytes) used to split the firmware into
+  ///   packets sent to the device (optional).
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
@@ -47,6 +49,7 @@ abstract class OtaPackage {
     BluetoothCharacteristic controlUUID, {
     String? binFilePath,
     String? url,
+    int mtuSize,
   });
 
   /// Property to track firmware update status
@@ -269,7 +272,7 @@ class Esp32OtaPackage implements OtaPackage {
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
         final List<int> bytes = response.bodyBytes;
-       
+
         final int chunkSize = mtuSize;
         List<Uint8List> chunks = [];
         for (int i = 0; i < bytes.length; i += chunkSize) {
@@ -427,6 +430,7 @@ class Esp32OtaPackage implements OtaPackage {
     BluetoothCharacteristic controlUUID, {
     String? binFilePath,
     String? url,
+    int mtuSize = 500,
   }) async {
     _cancelRequested = false;
     _isUpdating = true;
@@ -434,9 +438,7 @@ class Esp32OtaPackage implements OtaPackage {
       if (updateType == UpdateType.espidf) {
         final bleRepo = BleRepository();
 
-        /// Get MTU size from the device
-        int mtuSize = 500;
-
+        /// Chunk size used to split the firmware into packets (defaults to 500).
         print("MTU size of current device $mtuSize");
 
         /// Prepare a byte list to write MTU size to controlCharacteristic
