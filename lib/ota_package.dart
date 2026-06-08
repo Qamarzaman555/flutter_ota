@@ -75,6 +75,16 @@ abstract class OtaPackage {
   /// connection leaves the two sides out of sync and typically results in a BLE
   /// disconnect / GATT error.
   Future<void> cancelUpdate();
+
+  /// Releases resources held by this instance.
+  ///
+  /// Cancels any active notification subscription and closes
+  /// [percentageStream]. The package already disposes itself automatically when
+  /// an update reaches a terminal state (success, failure, or cancellation), so
+  /// you normally do NOT need to call this. Use it only to abandon an update
+  /// that has not finished (e.g. on app shutdown). The instance must not be
+  /// used after disposing.
+  Future<void> dispose();
 }
 
 /// Value emitted on [OtaPackage.percentageStream] when an update is cancelled.
@@ -144,6 +154,51 @@ class Esp32OtaPackage implements OtaPackage {
     _cancelRequested = true;
     await subscription?.cancel();
     subscription = null;
+    _completeUpdate(cancelledValue);
+  }
+
+  /// Releases resources held by this instance.
+  ///
+  /// In normal operation the package disposes itself when the update reaches a
+  /// terminal state (success, failure, or cancellation), so calling this is
+  /// only needed to abandon an update that has not finished (e.g. the app is
+  /// shutting down). Safe to call more than once.
+  @override
+  Future<void> dispose() async {
+    await subscription?.cancel();
+    subscription = null;
+    if (!_percentageController.isClosed) {
+      await _percentageController.close();
+    }
+  }
+
+  /// Emits [value] on [percentageStream], guarding against a closed controller.
+  ///
+  /// Notification callbacks can fire after [dispose] has closed the controller;
+  /// adding to a closed controller would throw, so we silently drop late
+  /// emissions instead.
+  void _emitPercentage(int value) {
+    if (_percentageController.isClosed) return;
+    _percentageController.add(value);
+  }
+
+  /// Emits a terminal [value] and then releases all resources.
+  ///
+  /// Called whenever the update reaches a terminal state — success, failure, or
+  /// cancellation — so the package cleans up after itself: it cancels the BLE
+  /// notification subscription and closes [percentageStream]. This makes the
+  /// package leak-safe on its own, with no dependency on a widget/page
+  /// lifecycle (the caller can navigate freely while the update runs). Safe to
+  /// call more than once; later calls are ignored once the stream is closed.
+  void _completeUpdate(int value) {
+    if (_percentageController.isClosed) return;
+    _isUpdating = false;
+    // Emit the terminal value first so listeners receive it before the
+    // stream's done event, then close.
+    _percentageController.add(value);
+    subscription?.cancel();
+    subscription = null;
+    _percentageController.close();
   }
 
   /// Centralised cleanup for a failed/interrupted OTA.
@@ -156,10 +211,7 @@ class Esp32OtaPackage implements OtaPackage {
   void _handleUpdateError(Object error) {
     print('OTA update aborted due to BLE error: $error');
     firmwareUpdate = false;
-    _isUpdating = false;
-    subscription?.cancel();
-    subscription = null;
-    _percentageController.add(_cancelRequested ? cancelledValue : failedValue);
+    _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 
   /// Function to read binary firmware file and split it into chunks
@@ -474,8 +526,7 @@ class Esp32OtaPackage implements OtaPackage {
           if (_cancelRequested) {
             print('OTA update cancelled while sending firmware');
             firmwareUpdate = false;
-            _percentageController.add(cancelledValue);
-            _isUpdating = false;
+            _completeUpdate(cancelledValue);
             return;
           }
 
@@ -489,7 +540,7 @@ class Esp32OtaPackage implements OtaPackage {
             'Writing package number $packageNumber of ${binaryChunks.length} to ESP32',
           );
           print('Progress: $roundedProgress%');
-          _percentageController.add(roundedProgress);
+          _emitPercentage(roundedProgress);
         }
 
         /// Write x04 to the controlCharacteristic to finish the update process
@@ -507,11 +558,13 @@ class Esp32OtaPackage implements OtaPackage {
         if (value[0] == 5) {
           print('OTA update finished');
           firmwareUpdate = true; // Firmware update was successful
+          // All packets transferred and acknowledged: emit 100% and dispose.
+          _completeUpdate(100);
         } else {
           print('OTA update failed');
           firmwareUpdate = false; // Firmware update failed
+          _completeUpdate(failedValue);
         }
-        _isUpdating = false;
       } else if (updateType == UpdateType.arduino) {
         final bleRepo = BleRepository();
 
@@ -556,11 +609,8 @@ class Esp32OtaPackage implements OtaPackage {
           /// Stop reacting to notifications once a cancellation is requested
           if (_cancelRequested) {
             print('OTA update cancelled while sending firmware');
-            await subscription?.cancel();
-            subscription = null;
             firmwareUpdate = false;
-            _percentageController.add(cancelledValue);
-            _isUpdating = false;
+            _completeUpdate(cancelledValue);
             return;
           }
 
@@ -572,7 +622,7 @@ class Esp32OtaPackage implements OtaPackage {
             /// Rounded off progress value
             print('Writing part number ${value[2]} of $fileParts to ESP32');
             print('Progress: $roundedProgress%');
-            _percentageController.add(roundedProgress);
+            _emitPercentage(roundedProgress);
             if (value[0] == 0xF1)
             /// this basically is checking listener stream
             {
@@ -587,7 +637,8 @@ class Esp32OtaPackage implements OtaPackage {
             if (value[0] == 0x0F) {
               print("OTA Update complete");
               firmwareUpdate = true;
-              _isUpdating = false;
+              // Final part acknowledged: emit 100% and dispose.
+              _completeUpdate(100);
             }
             if (value[0] == 0xF2) {
               print("New bin file installation begins on esp32");
@@ -641,7 +692,7 @@ class Esp32OtaPackage implements OtaPackage {
         int roundedProgress = progress.round(); // Rounded off progress value
         print('Writing part number $packageNumber of $fileParts to ESP32');
         print('Progress: $roundedProgress%');
-        _percentageController.add(roundedProgress);
+        _emitPercentage(roundedProgress);
       }
     } catch (e) {
       // A BLE error (disconnect, GATT 133, etc.) must not crash the app: report
