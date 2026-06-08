@@ -1,4 +1,4 @@
-// ignore_for_file: annotate_overrides, avoid_print, prefer_const_constructors
+// ignore_for_file: annotate_overrides, prefer_const_constructors
 
 // Import necessary libraries
 import 'dart:async';
@@ -7,6 +7,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:logger/logger.dart';
+
+/// Shared logger for the OTA package.
+///
+/// Uses [PrettyPrinter] to emit colorized, level-tagged logs (with emojis) so
+/// the BLE/OTA flow is easy to follow during development. In release builds the
+/// default [DevelopmentFilter] suppresses output, so these logs do not ship to
+/// production.
+final Logger _logger = Logger(
+  printer: PrettyPrinter(
+    methodCount: 0,
+    errorMethodCount: 6,
+    lineLength: 90,
+    colors: true,
+    printEmojis: true,
+    dateTimeFormat: DateTimeFormat.onlyTimeAndSinceStart,
+  ),
+);
 
 /// The type of update protocol used to flash the firmware.
 ///
@@ -150,7 +168,7 @@ class Esp32OtaPackage implements OtaPackage {
   @override
   Future<void> cancelUpdate() async {
     if (!_isUpdating) return;
-    print('OTA update cancellation requested');
+    _logger.w('OTA update cancellation requested');
     _cancelRequested = true;
     await subscription?.cancel();
     subscription = null;
@@ -209,17 +227,17 @@ class Esp32OtaPackage implements OtaPackage {
   /// caused by a user cancellation, [cancelledValue] is emitted; otherwise
   /// [failedValue] is emitted.
   void _handleUpdateError(Object error) {
-    print('OTA update aborted due to BLE error: $error');
+    _logger.e('OTA update aborted due to BLE error', error: error);
     firmwareUpdate = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 
   /// Function to read binary firmware file and split it into chunks
   Future<List<Uint8List>> _readBinaryFile(String filePath, int mtuSize) async {
-    print("In binary file read and path is $filePath");
+    _logger.d('Reading binary firmware from asset path: $filePath');
     ByteData fileData = await rootBundle.load(filePath);
     List<int> bytes = fileData.buffer.asUint8List();
-    print(Uint8List.fromList(bytes));
+    _logger.t('Firmware bytes: ${Uint8List.fromList(bytes)}');
     List<Uint8List> firmwareData = [];
     // Split file data into chunks based on MTU size
     for (int i = 0; i < bytes.length; i += mtuSize) {
@@ -232,7 +250,7 @@ class Esp32OtaPackage implements OtaPackage {
     return firmwareData; // Return firmware data chunks
   }
 
-  /// Convert Uint8List to List<int>
+  /// Convert `Uint8List` to `List<int>`
   List<int> uint8ListToIntList(Uint8List uint8List) {
     return uint8List.toList();
   }
@@ -244,7 +262,7 @@ class Esp32OtaPackage implements OtaPackage {
     String? binFilePath,
   }) {
     if (firmwareType == FirmwareType.filepicker) {
-      print("in package mtu size is $mtuSize");
+      _logger.d('Chunk size (MTU) for firmware: $mtuSize');
       return _getFirmwareFromPicker(mtuSize - 3);
     } else if (firmwareType == FirmwareType.assets && binFilePath != null) {
       return _readBinaryFile(binFilePath, mtuSize);
@@ -255,7 +273,7 @@ class Esp32OtaPackage implements OtaPackage {
 
   /// Get firmware chunks from file picker
   Future<List<Uint8List>> _getFirmwareFromPicker(int mtuSize) async {
-    print("Mtu size in fie picker is $mtuSize");
+    _logger.d('Chunk size (MTU) in file picker: $mtuSize');
 
     final result = await FilePicker.pickFiles(
       type: FileType.any,
@@ -263,12 +281,12 @@ class Esp32OtaPackage implements OtaPackage {
     );
 
     if (result == null || result.files.isEmpty) {
-      print("File was empty");
+      _logger.w('No firmware file selected');
       return []; // Return an empty list when no file is picked
     }
 
     final file = result.files.first;
-    print("Read the file :$file");
+    _logger.d('Selected firmware file: ${file.name}');
     try {
       final firmwareData = await _openFileAndGetFirmwareData(file, mtuSize);
 
@@ -284,7 +302,7 @@ class Esp32OtaPackage implements OtaPackage {
 
   /// Get firmware chunks from file picker
   Future<Uint8List> _getFirmwareFromPickerArduino(int mtuSize) async {
-    print("Mtu size in fie picker for arduino firmware is $mtuSize");
+    _logger.d('Chunk size (MTU) in file picker (Arduino): $mtuSize');
     final Uint8List binfiledata;
 
     final result = await FilePicker.pickFiles(
@@ -293,12 +311,12 @@ class Esp32OtaPackage implements OtaPackage {
     );
 
     if (result == null || result.files.isEmpty) {
-      print("File was empty");
+      _logger.w('No firmware file selected');
       return Uint8List(0); // Return an empty list when no file is picked
     }
 
     final file = result.files.first;
-    print("Read the file :$file");
+    _logger.d('Selected firmware file: ${file.name}');
     try {
       final bytes = await File(file.path!).readAsBytes();
       binfiledata = Uint8List.fromList(bytes);
@@ -380,7 +398,7 @@ class Esp32OtaPackage implements OtaPackage {
   ) async {
     final bytes = await File(file.path!).readAsBytes();
     List<Uint8List> firmwareData = [];
-    print('Before Dividing firmware data into chunks');
+    _logger.d('Dividing firmware data into chunks');
     for (int i = 0; i < bytes.length; i += mtuSize) {
       int end = i + mtuSize;
       if (end > bytes.length) {
@@ -394,7 +412,7 @@ class Esp32OtaPackage implements OtaPackage {
   /// sendPart function which is used to send parts to the esp32
   Future<void> sendPart(int position, Uint8List data) async {
     if (_cancelRequested) {
-      print('sendPart aborted due to cancellation');
+      _logger.w('sendPart aborted due to cancellation');
       return;
     }
     final bleRepo = BleRepository();
@@ -404,11 +422,9 @@ class Esp32OtaPackage implements OtaPackage {
       end = data.length;
     }
     int parts = (end - start) ~/ mtu;
-    print("Parts are $parts");
+    _logger.d('Parts to send: $parts');
     for (int i = 0; i < parts; i++) {
-      print(
-        "created $i parts",
-      ); //<------------------------------ Print to debug
+      _logger.t('Created part $i');
       Uint8List toSend = Uint8List(mtu + 2);
       toSend[0] = 0XFB;
       toSend[1] = i;
@@ -426,12 +442,11 @@ class Esp32OtaPackage implements OtaPackage {
 
       /// print statement below should be replaced with actual sending code
 
-      print("Before writing data, to send length is ${toSend.length}");
+      _logger.t('Writing data, payload length is ${toSend.length}');
       await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
-      //print("--- send data at this line in code ---");  //<------------------------------ Print to debug
     }
     if ((end - start) % mtu != 0) {
-      print("in other if");
+      _logger.t('Writing remainder part');
       int rem = (end - start) % mtu;
       Uint8List toSend = Uint8List(rem + 2);
       toSend[0] = 0XFB;
@@ -446,8 +461,7 @@ class Esp32OtaPackage implements OtaPackage {
         variable = variable + list2.length;
       }
 
-      /// print statement below should be replaced with actual sending code
-      print("2nd write");
+      _logger.t('Writing remainder payload');
       await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
     }
 
@@ -459,9 +473,8 @@ class Esp32OtaPackage implements OtaPackage {
       (position % 256),
     ]);
 
-    /// print statement below should be replaced with actual sending code
     await bleRepo.writeDataCharacteristic(writeCharacteristic, update);
-    print("---- send update on this line of code --- $update");
+    _logger.t('Sent part update marker: $update');
   }
 
   /// sendPArt function ends here
@@ -482,7 +495,7 @@ class Esp32OtaPackage implements OtaPackage {
         final bleRepo = BleRepository();
 
         /// Chunk size used to split the firmware into packets (defaults to 500).
-        print("MTU size of current device $mtuSize");
+        _logger.i('Starting ESP-IDF OTA — chunk size (MTU): $mtuSize');
 
         /// Prepare a byte list to write MTU size to controlCharacteristic
         Uint8List byteList = Uint8List(2);
@@ -517,14 +530,14 @@ class Esp32OtaPackage implements OtaPackage {
         List<int> value = await bleRepo
             .readCharacteristic(notifyCharacteristic)
             .timeout(Duration(seconds: 10));
-        print('value returned is this ------- ${value[0]}');
+        _logger.d('Control characteristic returned: ${value[0]}');
 
         int packageNumber = 0;
-        print('Before Progress');
+        _logger.i('Sending ${binaryChunks.length} firmware chunks');
         for (Uint8List chunk in binaryChunks) {
           /// Abort sending if a cancellation was requested
           if (_cancelRequested) {
-            print('OTA update cancelled while sending firmware');
+            _logger.w('OTA update cancelled while sending firmware');
             firmwareUpdate = false;
             _completeUpdate(cancelledValue);
             return;
@@ -536,10 +549,9 @@ class Esp32OtaPackage implements OtaPackage {
 
           double progress = (packageNumber / binaryChunks.length) * 100;
           int roundedProgress = progress.round(); // Rounded off progress value
-          print(
-            'Writing package number $packageNumber of ${binaryChunks.length} to ESP32',
+          _logger.d(
+            'Writing package $packageNumber/${binaryChunks.length} — $roundedProgress%',
           );
-          print('Progress: $roundedProgress%');
           _emitPercentage(roundedProgress);
         }
 
@@ -553,15 +565,15 @@ class Esp32OtaPackage implements OtaPackage {
         value = await bleRepo
             .readCharacteristic(notifyCharacteristic)
             .timeout(Duration(seconds: 600));
-        print('value returned is this ------- ${value[0]}');
+        _logger.d('Control characteristic returned: ${value[0]}');
 
         if (value[0] == 5) {
-          print('OTA update finished');
+          _logger.i('OTA update finished successfully');
           firmwareUpdate = true; // Firmware update was successful
           // All packets transferred and acknowledged: emit 100% and dispose.
           _completeUpdate(100);
         } else {
-          print('OTA update failed');
+          _logger.e('OTA update failed (unexpected status ${value[0]})');
           firmwareUpdate = false; // Firmware update failed
           _completeUpdate(failedValue);
         }
@@ -571,7 +583,7 @@ class Esp32OtaPackage implements OtaPackage {
         /// Get MTU size from the device
         int mtuSize = await device.mtu.first;
 
-        print("MTU size of current device $mtuSize");
+        _logger.i('Starting Arduino OTA — device MTU: $mtuSize');
 
         /// Prepare a byte list to write MTU size to controlCharacteristic
         Uint8List byteList = Uint8List(2);
@@ -584,11 +596,11 @@ class Esp32OtaPackage implements OtaPackage {
           ByteData fileData = await rootBundle.load(binFilePath);
           List<int> bytes = fileData.buffer.asUint8List();
           binFile = Uint8List.fromList(bytes);
-          print("Bin file after conversion is $binFile");
-          print("Bin file length after conversion is ${binFile.length}");
+          _logger.t('Bin file after conversion: $binFile');
+          _logger.d('Bin file length: ${binFile.length}');
         } else if (firmwareType == FirmwareType.filepicker) {
           binFile = await _getFirmwareFromPickerArduino(200);
-          print("binFile is $binFile");
+          _logger.t('Bin file: $binFile');
         } else if (firmwareType == FirmwareType.url &&
             url != null &&
             url.isNotEmpty) {
@@ -596,10 +608,9 @@ class Esp32OtaPackage implements OtaPackage {
         } else {
           binFile = Uint8List(0);
         }
-        print('before printing file Length');
         int fileLen = binFile.length;
         int fileParts = (fileLen / part).ceil();
-        print("this is the fileParts :  $fileParts");
+        _logger.d('Firmware length: $fileLen bytes, file parts: $fileParts');
 
         ///1. Start stream which listens to the notification advertisement
         await notifyCharacteristic.setNotifyValue(true);
@@ -608,20 +619,21 @@ class Esp32OtaPackage implements OtaPackage {
         ) async {
           /// Stop reacting to notifications once a cancellation is requested
           if (_cancelRequested) {
-            print('OTA update cancelled while sending firmware');
+            _logger.w('OTA update cancelled while sending firmware');
             firmwareUpdate = false;
             _completeUpdate(cancelledValue);
             return;
           }
 
           try {
-            print("received value is $value");
+            _logger.t('Received notification value: $value');
             double progress = (value[2] / fileParts) * 100;
             int roundedProgress = progress.round();
 
             /// Rounded off progress value
-            print('Writing part number ${value[2]} of $fileParts to ESP32');
-            print('Progress: $roundedProgress%');
+            _logger.d(
+              'Writing part ${value[2]}/$fileParts — $roundedProgress%',
+            );
             _emitPercentage(roundedProgress);
             if (value[0] == 0xF1)
             /// this basically is checking listener stream
@@ -631,17 +643,17 @@ class Esp32OtaPackage implements OtaPackage {
               int nxt = byteData.getUint16(0);
 
               /// Used getUint16 for a 2-byte integer
-              print("--------- nxt -------- $nxt");
+              _logger.d('Next part requested: $nxt');
               await sendPart(nxt, binFile!);
             }
             if (value[0] == 0x0F) {
-              print("OTA Update complete");
+              _logger.i('OTA update complete');
               firmwareUpdate = true;
               // Final part acknowledged: emit 100% and dispose.
               _completeUpdate(100);
             }
             if (value[0] == 0xF2) {
-              print("New bin file installation begins on esp32");
+              _logger.i('New bin file installation begins on ESP32');
             }
           } catch (e) {
             // Writes triggered from the notification listener run after
@@ -667,9 +679,7 @@ class Esp32OtaPackage implements OtaPackage {
         fileSize[2] = (fileLen >> 16) & 0xFF; // Second most significant byte
         fileSize[3] = (fileLen >> 8) & 0xFF; // Third most significant byte
         fileSize[4] = fileLen & 0xFF; // Least significant byte
-        print(
-          "this is file size : $fileSize",
-        ); // this is where it is sent to esp32
+        _logger.d('Sending file size packet: $fileSize');
         await bleRepo.writeDataCharacteristic(writeCharacteristic, fileSize);
 
         ///4. Send 0xFF appended with other info - see code below
@@ -680,9 +690,7 @@ class Esp32OtaPackage implements OtaPackage {
         otaInfo[2] = (fileParts % 256);
         otaInfo[3] = (mtu ~/ 256);
         otaInfo[4] = (mtu % 256);
-        print(
-          "this is otaInfo : $otaInfo",
-        ); // this is where it is sent to esp32
+        _logger.d('Sending OTA info packet: $otaInfo');
         await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
 
         ///5. Divide bin file into parts
@@ -690,8 +698,7 @@ class Esp32OtaPackage implements OtaPackage {
         sendPart(0, binFile);
         double progress = (packageNumber / fileParts) * 100;
         int roundedProgress = progress.round(); // Rounded off progress value
-        print('Writing part number $packageNumber of $fileParts to ESP32');
-        print('Progress: $roundedProgress%');
+        _logger.d('Writing part $packageNumber/$fileParts — $roundedProgress%');
         _emitPercentage(roundedProgress);
       }
     } catch (e) {

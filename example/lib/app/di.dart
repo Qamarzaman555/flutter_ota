@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 
 import '../features/scanningAndConnection/presentation/controller/scanning_connection_controller.dart';
 
-di()async{
+Future<void> di()async{
   WidgetsFlutterBinding.ensureInitialized();
   Get.put(HomePageController());
  /* Get.put<HiveServices>(HiveServicesImplementation());

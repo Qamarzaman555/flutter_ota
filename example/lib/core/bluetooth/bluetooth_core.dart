@@ -1,8 +1,7 @@
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class BluetoothCore {
-
-  Stream<ScanResult> scan() => FlutterBluePlus.scan();
+  // Stream<ScanResult> scan() => FlutterBluePlus.scan();
 
   Future connect(BluetoothDevice device) async {
     await device.connect(license: License.nonprofit, autoConnect: false);

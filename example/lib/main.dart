@@ -22,7 +22,7 @@ void main() async {
     ph.Permission.location,
     ph.Permission.storage, // Add storage permission here
   ].request();
-  print("statuses: $statuses");
+  debugPrint("statuses: $statuses");
 
   BluetoothAdapter.initBleStateStream();
   runApp(const MyApp());
@@ -104,18 +104,12 @@ class _MyHomePageState extends State<MyHomePage> {
                   //height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.rectangle,
-                    border: Border.all(
-                      color: Colors.transparent,
-                      width: 2,
-                    ),
+                    border: Border.all(color: Colors.transparent, width: 2),
                     borderRadius: BorderRadius.circular(10.0),
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        secondaryColor,
-                        secondaryColor,
-                      ],
+                      colors: [secondaryColor, secondaryColor],
                     ),
                   ),
                   //margin: const EdgeInsets.only(top: 10.0),
@@ -127,10 +121,11 @@ class _MyHomePageState extends State<MyHomePage> {
                         Text(
                           "Start Scanning",
                           style: TextStyle(
-                              color: Color(0xFFFFFFFF),
-                              fontFamily: 'Inter',
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500),
+                            color: Color(0xFFFFFFFF),
+                            fontFamily: 'Inter',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
@@ -138,13 +133,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
                 onTap: () async {
                   if (await PermissionEnable().check() == true) {
-                    print("in start scaning");
+                    debugPrint("in start scaning");
                     homePageController.scannedDevicesList.clear();
-                    print("Going to scaaning view page");
+                    debugPrint("Going to scaaning view page");
                     Get.toNamed(AppRoutes.scanning);
                     await homePageController.scanningMethod();
                   } else {
-                    print("permission denied");
+                    debugPrint("permission denied");
                   }
                 },
               ),

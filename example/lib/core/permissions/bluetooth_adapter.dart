@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class BluetoothAdapter {
@@ -20,7 +21,7 @@ class BluetoothAdapter {
   }
 
   Future<bool> enableBT() async {
-    print("isbluettoth turn on is $isBluetoothOn");
+    debugPrint("isbluettoth turn on is $isBluetoothOn");
     if (Platform.isAndroid) {
       if (isBluetoothOn) {
         return true;

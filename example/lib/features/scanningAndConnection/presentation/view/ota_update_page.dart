@@ -110,7 +110,7 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                   ),
                 ),
                 onTap: () async {
-                  print("OTA Update tapped");
+                  debugPrint("OTA Update tapped");
                   // Call the OTA update logic here
                   BluetoothDevice? device = homePageController.gBleDevice;
                   List<BluetoothService> services =
@@ -118,21 +118,21 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
 
                   if (device == null || services.isEmpty) {
                     showToast("Connect to device first");
-                    print("Device or services not available for OTA update");
+                    debugPrint("Device or services not available for OTA update");
                     return;
                   }
 
                   bool characteristicsFound = false;
 
                   for (BluetoothService service in services) {
-                    print(
+                    debugPrint(
                       "In services loop and services lenght is ${services.length}",
                     );
                     if (service.uuid
                             .toString() == //'d6f1d96d-594c-4c53-b1c6-144a1dfde6d8') {
                         'd6f1d96d-594c-4c53-b1c6-144a1dfde6d8') {
                       //arduino uuid
-                      print("service found");
+                      debugPrint("service found");
                       final characteristics = service.characteristics;
                       BluetoothCharacteristic? notifyUuid;
                       BluetoothCharacteristic? writeUuid;
@@ -154,17 +154,17 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
 
                       if (notifyUuid != null && writeUuid != null) {
                         if (Platform.isAndroid) {
-                          print("Plateform is andriod");
+                          debugPrint("Plateform is andriod");
                           // Request a new MTU size for Android
                           const newMtu = 500;
                           await device.requestMtu(newMtu);
 
-                          // The MTU request was successful, print the new MTU size
-                          print('New MTU size (Android): $newMtu');
+                          // The MTU request was successful, debugPrint the new MTU size
+                          debugPrint('New MTU size (Android): $newMtu');
                         } else if (Platform.isIOS) {
                           // Use fixed MTU size of 185 for iOS
                           const newMtu = 185;
-                          print('New MTU size (iOS): $newMtu');
+                          debugPrint('New MTU size (iOS): $newMtu');
                         }
 
                         Esp32OtaPackage esp32otaPackage = Esp32OtaPackage(
@@ -172,7 +172,7 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           writeUuid,
                         );
 
-                        print("After package data set");
+                        debugPrint("After package data set");
 
                         // Show the progress dialog
                         // ignore_for_file: use_build_context_synchronously

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,21 +43,23 @@ class HomePageController extends GetxController {
     final prefs = await SharedPreferences.getInstance();
     lastDeviceId.value = prefs.getString(_lastDeviceIdKey) ?? '';
     lastDeviceName.value = prefs.getString(_lastDeviceNameKey) ?? '';
-    print(
-        "Loaded last device: ${lastDeviceName.value} (${lastDeviceId.value})");
+    debugPrint(
+      "Loaded last device: ${lastDeviceName.value} (${lastDeviceId.value})",
+    );
   }
 
   /// Persists the given device so it can be auto-connected to next time.
   Future<void> _saveLastDevice(BluetoothDevice device) async {
     final prefs = await SharedPreferences.getInstance();
     final String id = device.remoteId.str;
-    final String name =
-        device.platformName.isNotEmpty ? device.platformName : id;
+    final String name = device.platformName.isNotEmpty
+        ? device.platformName
+        : id;
     await prefs.setString(_lastDeviceIdKey, id);
     await prefs.setString(_lastDeviceNameKey, name);
     lastDeviceId.value = id;
     lastDeviceName.value = name;
-    print("Saved last device: $name ($id)");
+    debugPrint("Saved last device: $name ($id)");
   }
 
   /// Attempts to reconnect to the most recently connected device without
@@ -81,15 +84,16 @@ class HomePageController extends GetxController {
       }
       return connected;
     } catch (e) {
-      print("Auto-connect failed: $e");
+      debugPrint("Auto-connect failed: $e");
       showToast('Auto-connect failed');
       return false;
     } finally {
       isAutoConnecting.value = false;
     }
   }
+
   Future<void> scanningMethod() async {
-    print("In scanning method");
+    debugPrint("In scanning method");
     final isScanning = FlutterBluePlus.isScanningNow;
     if (isScanning) {
       await FlutterBluePlus.stopScan();
@@ -101,28 +105,26 @@ class HomePageController extends GetxController {
 
     await streamSubscription?.cancel();
 
-    streamSubscription = FlutterBluePlus.scanResults.listen(
-      (results) {
-        for (ScanResult r in results) {
-          if (r.device.localName.isNotEmpty &&
-              !scannedDevicesList.contains(r.device)) {
-            print("device name is ${r.device.localName}");
-            scannedDevicesList.add(r.device);
-            // Listen for changes in connection state
-            r.device.connectionState.listen((connectionState) {
-              if (connectionState == BluetoothConnectionState.connected) {
-                // Remove the device from the list if it's connected
-                scannedDevicesList.remove(r.device);
-              }
-            });
-            /*if (r.device.toString().toLowerCase().contains("laser gun")) {
-                print("device name is ${r.device.localName}");
+    streamSubscription = FlutterBluePlus.scanResults.listen((results) {
+      for (ScanResult r in results) {
+        if (r.device.advName.isNotEmpty &&
+            !scannedDevicesList.contains(r.device)) {
+          debugPrint("device name is ${r.device.advName}");
+          scannedDevicesList.add(r.device);
+          // Listen for changes in connection state
+          r.device.connectionState.listen((connectionState) {
+            if (connectionState == BluetoothConnectionState.connected) {
+              // Remove the device from the list if it's connected
+              scannedDevicesList.remove(r.device);
+            }
+          });
+          /*if (r.device.toString().toLowerCase().contains("laser gun")) {
+                debugPrint("device name is ${r.device.advName}");
                 connectionController.devicesList.add(r.device);
               }*/
-          }
         }
-      },
-    );
+      }
+    });
 
     await FlutterBluePlus.startScan();
   }
@@ -142,19 +144,19 @@ class HomePageController extends GetxController {
         await device.disconnect();
       }
 
-      print("before trying to connect");
+      debugPrint("before trying to connect");
       await device.connect(autoConnect: false, license: License.nonprofit);
-      print("after connect");
+      debugPrint("after connect");
 
       // Negotiate a larger MTU before discovering services (Android only).
       if (Platform.isAndroid) {
         await device.requestMtu(200);
-        print("mtu set");
+        debugPrint("mtu set");
       }
 
       // Only safe to discover services once the device is actually connected.
       gBleServices.assignAll(await device.discoverServices());
-      print("Services discovered in connect is $gBleServices");
+      debugPrint("Services discovered in connect is $gBleServices");
 
       gIsDeviceConnected.value = true;
       // Remember this device so it can be auto-connected to next time.
@@ -162,7 +164,7 @@ class HomePageController extends GetxController {
       showToast('Connected');
       return true;
     } catch (e) {
-      print("Connection failed: $e");
+      debugPrint("Connection failed: $e");
       gIsDeviceConnected.value = false;
       try {
         await device.disconnect();
