@@ -80,7 +80,7 @@ await otaPackage.updateFirmware(
   device,
   UpdateType.espidf,
   FirmwareType.assets,
-  binFilePath: 'assets/firmware.bin',
+  uri: 'assets/firmware.bin',
   chunkSize: 500, // optional, ESP-IDF only (default 500)
 );
 
@@ -89,7 +89,7 @@ await otaPackage.updateFirmware(
   device,
   UpdateType.arduino,
   FirmwareType.url,
-  url: 'https://example.com/firmware.ino.bin',
+  uri: 'https://example.com/firmware.ino.bin',
   packetSize: 400, // optional, Arduino only (default 400)
   partSize: 16000, // optional, Arduino only (default 16000)
 );
@@ -104,8 +104,7 @@ await otaPackage.updateFirmware(
 
 | Parameter | Applies to |
 | --- | --- |
-| `binFilePath` | `FirmwareType.assets` only (required) |
-| `url` | `FirmwareType.url` only (required) |
+| `uri` | `FirmwareType.assets` and `FirmwareType.url` (required for both) |
 | `mtuSize` | `UpdateType.espidf` only (default `500`) |
 | `packetSize` | `UpdateType.arduino` only (default `400`) |
 | `partSize` | `UpdateType.arduino` only (default `16000`) |
@@ -180,7 +179,7 @@ try {
     device,
     UpdateType.espidf,
     FirmwareType.url,
-    url: url,
+    uri: url,
     mtuSize: 500,
   );
 } on EmptyFirmwareException catch (e) {

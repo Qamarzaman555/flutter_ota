@@ -348,9 +348,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                             device,
                             UpdateType.arduino, //Update Type
                             FirmwareType.assets,
-                            // binFilePath: "assets/new_version 1.0.1.ino.bin",
-                            binFilePath: "assets/old version 1.0.0.ino.bin",
-                            // url:
+                            // uri: "assets/new_version 1.0.1.ino.bin",
+                            uri: "assets/old version 1.0.0.ino.bin",
+                            // uri:
                             //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/new_version%201.0.1.ino.bin?alt=media&token=45ea82a0-aca6-49db-8f83-f01400ecbc6e',
                             mtuSize: 500,
                           );
