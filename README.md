@@ -13,6 +13,11 @@ This package provides functionalities for Over-The-Air (OTA) updates for ESP32 d
 * Self-disposing: resources are released automatically when an update reaches a
   terminal state.
 
+**Requirements**
+
+* Flutter `>=3.32.0`
+* Dart `>=3.8.0 <4.0.0`
+
 **Installation**
 
 1. Add the following line to your `pubspec.yaml` file:
@@ -44,10 +49,11 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 ```dart
 // Replace with the actual UUIDs of your ESP32 BLE service and characteristics
 BluetoothService service = ...;
-BluetoothCharacteristic dataCharacteristic = ...;
+BluetoothCharacteristic writeCharacteristic = ...;
 BluetoothCharacteristic notifyCharacteristic = ...;
 
-Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, dataCharacteristic);
+// Constructor order is (notifyCharacteristic, writeCharacteristic).
+Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, writeCharacteristic);
 ```
 
 4. Choose the firmware update type (`updateType`) and firmware type (`firmwareType`):
@@ -64,24 +70,47 @@ Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, dataCharacter
     * `FirmwareType.filepicker`: To select a binary firmware file from the device storage.
     * `FirmwareType.url`: For downloading firmware from a URL.
 
-5. (Optional) Provide the path to the binary firmware file (`binFilePath`) if `firmwareType` is set to `FirmwareType.assets`.
-
-6. (Optional) Provide the URL of the firmware file if `firmwareType` is set to `FirmwareType.url`.
-
-7. Call the `updateFirmware` method of the `otaPackage` instance:
+5. Call `updateFirmware` with only the parameters that apply to your chosen
+   `updateType` and `firmwareType` (passing unrelated parameters throws
+   `ArgumentError`):
 
 ```dart
+// ESP-IDF — firmware from assets
 await otaPackage.updateFirmware(
   device,
-  updateType,
-  firmwareType,
-  binFilePath: binFilePath,
-  url: url,
-  mtuSize: mtuSize,
+  UpdateType.espidf,
+  FirmwareType.assets,
+  binFilePath: 'assets/firmware.bin',
+  chunkSize: 500, // optional, ESP-IDF only (default 500)
+);
+
+// Arduino — firmware from URL
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.arduino,
+  FirmwareType.url,
+  url: 'https://example.com/firmware.ino.bin',
+  packetSize: 400, // optional, Arduino only (default 400)
+  partSize: 16000, // optional, Arduino only (default 16000)
+);
+
+// Arduino — firmware from file picker (no extra params needed)
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.arduino,
+  FirmwareType.filepicker,
 );
 ```
 
-8. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
+| Parameter | Applies to |
+| --- | --- |
+| `binFilePath` | `FirmwareType.assets` only (required) |
+| `url` | `FirmwareType.url` only (required) |
+| `mtuSize` | `UpdateType.espidf` only (default `500`) |
+| `packetSize` | `UpdateType.arduino` only (default `400`) |
+| `partSize` | `UpdateType.arduino` only (default `16000`) |
+
+6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
 
 ```dart
 StreamSubscription subscription = otaPackage.percentageStream.listen((progress) {
@@ -93,7 +122,7 @@ StreamSubscription subscription = otaPackage.percentageStream.listen((progress) 
 await subscription.cancel();
 ```
 
-9. Check the `firmwareUpdate` property of the `otaPackage` to determine if the update was successful:
+7. Check the `firmwareUpdate` property of the `otaPackage` to determine if the update was successful:
 
 ```dart
 if (otaPackage.firmwareUpdate) {
