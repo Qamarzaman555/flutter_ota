@@ -346,13 +346,15 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           // Perform the OTA update with the picked binfile
                           await esp32otaPackage.updateFirmware(
                             device,
-                            UpdateType.espidf, //Update Type
-                            FirmwareType.filepicker,
+                            UpdateType.arduino, //Update Type
+                            FirmwareType.url,
                             // binFilePath: "assets/Release_v1.5.23-rc4.img",
-                            url:
-                                'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
+                            // url:
+                            //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
                             // url:
                             //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Release_v1.5.22%20(1).img?alt=media&token=6cd5dbf5-8da8-44a5-add3-63c5106a27f1',
+                            url:
+                                'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/new_version%201.0.1.ino.bin?alt=media&token=45ea82a0-aca6-49db-8f83-f01400ecbc6e',
                             mtuSize: 500,
                           );
 

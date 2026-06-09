@@ -485,9 +485,15 @@ class Esp32OtaPackage implements OtaPackage {
       end = data.length;
     }
     int parts = (end - start) ~/ mtu;
-    _logger.d('Parts to send: $parts');
+
+    /// Overall transfer progress for this part, based on how many file parts
+    /// the firmware was split into. Used purely for logging here.
+    int fileParts = (data.length / part).ceil();
+    int overallProgress =
+        fileParts == 0 ? 0 : (((position + 1) / fileParts) * 100).round();
+    _logger.d('Parts to send: $parts — overall $overallProgress%');
     for (int i = 0; i < parts; i++) {
-      _logger.t('Created part $i');
+      _logger.t('Created part $i — overall $overallProgress%');
       Uint8List toSend = Uint8List(mtu + 2);
       toSend[0] = 0XFB;
       toSend[1] = i;
@@ -505,7 +511,9 @@ class Esp32OtaPackage implements OtaPackage {
 
       /// print statement below should be replaced with actual sending code
 
-      _logger.t('Writing data, payload length is ${toSend.length}');
+      _logger.t(
+        'Writing data, payload length is ${toSend.length} — overall $overallProgress%',
+      );
       await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
     }
     if ((end - start) % mtu != 0) {
