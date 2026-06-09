@@ -4,10 +4,14 @@ This package provides functionalities for Over-The-Air (OTA) updates for ESP32 d
 
 **Features**
 
-* Supports firmware updates from binary files and URLs.
+* Supports firmware updates from bundled assets, a file picker, and URLs.
 * Implements a progress stream to track update progress.
-* Compatible with different firmware types.
+* Compatible with both ESP-IDF and Arduino firmware.
 * Handles communication with ESP32 devices using Bluetooth Low Energy (BLE).
+* Typed errors (`OtaException` and friends) and early validation of empty
+  firmware, so failures surface clearly instead of corrupting an update.
+* Self-disposing: resources are released automatically when an update reaches a
+  terminal state.
 
 **Installation**
 
@@ -15,13 +19,13 @@ This package provides functionalities for Over-The-Air (OTA) updates for ESP32 d
 
 ```yaml
 dependencies:
-  flutter_ota: ^0.1.15
+  flutter_ota: ^1.0.0
 ```
 
 2. Run the following command to install the package:
 
 ```bash
-pub get
+flutter pub get
 ```
 
 **Usage**
@@ -29,7 +33,7 @@ pub get
 1. Import the necessary libraries:
 
 ```dart
-import 'package:flutter_ota/flutter_ota.dart';
+import 'package:flutter_ota/ota_package.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 ```
 
@@ -126,6 +130,59 @@ otaPackage.percentageStream.listen((progress) {
 > the two sides out of sync and typically results in a BLE disconnect / GATT
 > error. See the example app for how it disconnects after a cancel and prompts
 > the user to reconnect.
+
+## Error handling
+
+The package distinguishes two kinds of failures:
+
+* **BLE / transport errors during an in-progress update** (device disconnects, a
+  write fails with a GATT error, etc.) are reported on `percentageStream` as
+  `failedValue` (`-2`) rather than thrown, so a mid-transfer drop does not crash
+  your app. Handle these via the stream as shown above.
+
+* **Setup / firmware-loading errors** (e.g. an empty file, an empty download, or
+  a non-200 HTTP response) are thrown as typed exceptions before the OTA writes
+  begin, so the device is never left mid-update with nothing to flash. Wrap
+  `updateFirmware` in a `try/catch` to handle them:
+
+```dart
+try {
+  await otaPackage.updateFirmware(
+    device,
+    UpdateType.espidf,
+    FirmwareType.url,
+    url: url,
+    mtuSize: 500,
+  );
+} on EmptyFirmwareException catch (e) {
+  // Firmware source was empty (no bytes to flash).
+  print(e.message);
+} on FirmwareDownloadException catch (e) {
+  // HTTP download failed; e.statusCode is set for non-200 responses.
+  print('Download failed (${e.statusCode}): ${e.message}');
+} on OtaException catch (e) {
+  // Any other OTA error.
+  print(e.message);
+}
+```
+
+The exception types are:
+
+| Exception | When it is thrown |
+| --- | --- |
+| `OtaException` | Base class for all OTA errors thrown by the package. |
+| `EmptyFirmwareException` | The firmware source yields no data (empty asset/file, empty download, or no file selected). |
+| `FirmwareDownloadException` | The HTTP download fails (non-200 status, timeout, or network error). Carries an optional `statusCode`. |
+
+## Releasing resources
+
+The package disposes itself automatically once an update finishes, fails, or is
+cancelled, so you normally do **not** need to do anything. To abandon an update
+that has not finished (for example, on app shutdown), call `dispose()`:
+
+```dart
+await otaPackage.dispose();
+```
 
 ## Example Application
 

@@ -1,5 +1,3 @@
-// ignore_for_file: annotate_overrides, prefer_const_constructors
-
 // Import necessary libraries
 import 'dart:async';
 import 'dart:io';
@@ -128,8 +126,9 @@ class OtaException implements Exception {
   final Object? cause;
 
   @override
-  String toString() =>
-      cause == null ? 'OtaException: $message' : 'OtaException: $message ($cause)';
+  String toString() => cause == null
+      ? 'OtaException: $message'
+      : 'OtaException: $message ($cause)';
 }
 
 /// Thrown when a firmware source yields no data.
@@ -188,6 +187,7 @@ class Esp32OtaPackage implements OtaPackage {
   writeCharacteristic; //Characteristic for writing data
   StreamSubscription?
   subscription; // declare subscription as an instance variable
+  @override
   bool firmwareUpdate = false; // Flag indicating firmware update status
 
   bool _cancelRequested = false; // Flag indicating a cancellation was requested
@@ -398,7 +398,10 @@ class Esp32OtaPackage implements OtaPackage {
       rethrow;
     } catch (e) {
       /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw FirmwareDownloadException('Error fetching firmware from URL', cause: e);
+      throw FirmwareDownloadException(
+        'Error fetching firmware from URL',
+        cause: e,
+      );
     }
   }
 
@@ -444,7 +447,10 @@ class Esp32OtaPackage implements OtaPackage {
       rethrow;
     } catch (e) {
       /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw FirmwareDownloadException('Error fetching firmware from URL', cause: e);
+      throw FirmwareDownloadException(
+        'Error fetching firmware from URL',
+        cause: e,
+      );
     }
   }
 

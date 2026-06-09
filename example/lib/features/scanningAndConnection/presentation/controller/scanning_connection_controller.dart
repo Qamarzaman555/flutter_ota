@@ -48,6 +48,34 @@ class HomePageController extends GetxController {
     );
   }
 
+  /// Clears the persisted last-connected device so the app will NOT
+  /// auto-connect to it on the next launch.
+  Future<void> clearLastDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastDeviceIdKey);
+    await prefs.remove(_lastDeviceNameKey);
+    lastDeviceId.value = '';
+    lastDeviceName.value = '';
+    debugPrint("Cleared last device");
+  }
+
+  /// Disconnects the currently connected device (if any) and resets the
+  /// in-memory connection state.
+  Future<void> disconnectDevice() async {
+    final device = gBleDevice;
+    if (device != null) {
+      try {
+        if (device.isConnected) {
+          await device.disconnect();
+        }
+      } catch (e) {
+        debugPrint("Disconnect failed: $e");
+      }
+    }
+    gIsDeviceConnected.value = false;
+    connectedDevice.clear();
+  }
+
   /// Persists the given device so it can be auto-connected to next time.
   Future<void> _saveLastDevice(BluetoothDevice device) async {
     final prefs = await SharedPreferences.getInstance();
