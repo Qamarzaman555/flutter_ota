@@ -413,30 +413,31 @@ class Esp32OtaPackage implements OtaPackage {
 
       /// Check if the HTTP request was successful (status code 200)
       if (response.statusCode == 200) {
-        final List<int> bytes = response.bodyBytes;
+        _logger.d('Response status code: ${response.statusCode}');
 
-        /// Reject an empty response body before chunking so we fail early.
+        /// Firmware is binary, so work with raw bytes. Do NOT log
+        /// `response.body`: decoding a `.bin` as text can throw or dump the
+        /// whole firmware into the log.
+        final Uint8List bytes = Uint8List.fromList(response.bodyBytes);
+        _logger.d('Downloaded firmware length: ${bytes.length} bytes');
+
+        /// Reject an empty response body before sending so we fail early.
         if (bytes.isEmpty) {
+          _logger.w('Downloaded firmware is empty (0 bytes) from $url.');
           throw EmptyFirmwareException(
             'Downloaded firmware is empty (0 bytes) from $url.',
           );
         }
 
-        final int chunkSize = mtuSize - 3;
-        Uint8List firmware = Uint8List(0); // Initialize an empty Uint8List
-        for (int i = 0; i < bytes.length; i += chunkSize) {
-          int end = i + chunkSize;
-          if (end > bytes.length) {
-            end = bytes.length;
-          }
-          Uint8List chunk = Uint8List.fromList(bytes.sublist(i, end));
-          firmware = Uint8List.fromList([
-            ...firmware,
-            ...chunk,
-          ]); // Concatenate the chunks
-        }
-        return firmware;
+        /// Return the full firmware. Chunking into BLE-sized parts happens
+        /// later in `sendPart` (via `part`/`mtu`), matching the assets and
+        /// file-picker paths which also return the complete byte array.
+        return bytes;
       } else {
+        _logger.w(
+          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
+        );
+
         /// Handle HTTP error (e.g., status code is not 200)
         throw FirmwareDownloadException(
           'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
@@ -446,6 +447,8 @@ class Esp32OtaPackage implements OtaPackage {
     } on OtaException {
       rethrow;
     } catch (e) {
+      _logger.e('Error fetching firmware from URL', error: e);
+
       /// Handle other errors (e.g., timeout, network connectivity issues)
       throw FirmwareDownloadException(
         'Error fetching firmware from URL',
@@ -489,8 +492,9 @@ class Esp32OtaPackage implements OtaPackage {
     /// Overall transfer progress for this part, based on how many file parts
     /// the firmware was split into. Used purely for logging here.
     int fileParts = (data.length / part).ceil();
-    int overallProgress =
-        fileParts == 0 ? 0 : (((position + 1) / fileParts) * 100).round();
+    int overallProgress = fileParts == 0
+        ? 0
+        : (((position + 1) / fileParts) * 100).round();
     _logger.d('Parts to send: $parts — overall $overallProgress%');
     for (int i = 0; i < parts; i++) {
       _logger.t('Created part $i — overall $overallProgress%');
