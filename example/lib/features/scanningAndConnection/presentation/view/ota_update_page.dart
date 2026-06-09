@@ -347,9 +347,10 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           await esp32otaPackage.updateFirmware(
                             device,
                             UpdateType.arduino, //Update Type
-                            FirmwareType.assets,
-                            // uri: "assets/new_version 1.0.1.ino.bin",
-                            uri: "assets/old version 1.0.0.ino.bin",
+                            FirmwareType.url,
+                            uri:
+                                "https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/old%20version%201.0.0.ino.bin?alt=media&token=8e9b8183-7347-4d4c-9d84-7814ecdae634",
+                            // uri: "assets/old version 1.0.0.ino.bin",
                             // uri:
                             //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/new_version%201.0.1.ino.bin?alt=media&token=45ea82a0-aca6-49db-8f83-f01400ecbc6e',
                             mtuSize: 500,

@@ -52,7 +52,10 @@ abstract class OtaPackage {
   /// [uri]: The file path or URL of the firmware binary (optional). Required for
   ///   every [FirmwareType] except [FirmwareType.filepicker].
   /// [mtuSize]: The chunk size (in bytes) used to split the firmware into
-  ///   packets sent to the device (optional).
+  ///   packets sent to the device (optional). Must be at least 1 and not exceed
+  ///   the BLE single-write limit: [maxMtuSize] (512) for [UpdateType.espidf],
+  ///   or [maxMtuSize] - [arduinoHeaderSize] (510) for [UpdateType.arduino],
+  ///   which adds a 2-byte packet header. Out-of-range values are rejected.
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
@@ -109,6 +112,22 @@ const int cancelledValue = -1;
 /// of a BLE error (e.g. the device disconnects or a write fails with a GATT
 /// error). The package emits this instead of throwing so the app does not crash.
 const int failedValue = -2;
+
+/// Maximum size, in bytes, of a single BLE characteristic write.
+///
+/// BLE caps a single characteristic write at 512 bytes — the maximum attribute
+/// length defined in the Bluetooth spec, which `flutter_blue_plus` also enforces
+/// on both Android and iOS. Writes larger than this fail at runtime, so
+/// [Esp32OtaPackage.updateFirmware] rejects any chunk that would exceed it.
+const int maxMtuSize = 512;
+
+/// Number of header bytes the Arduino OTA protocol prepends to every data
+/// packet (`0xFB` marker + part index — see [Esp32OtaPackage.sendPart]).
+///
+/// Because of this overhead an Arduino packet on the wire is `mtuSize + 2`
+/// bytes, so the largest usable `mtuSize` for the Arduino path is
+/// [maxMtuSize] - [arduinoHeaderSize].
+const int arduinoHeaderSize = 2;
 
 /// Base class for all OTA-related errors thrown by this package.
 ///
@@ -178,7 +197,6 @@ class BleRepository {
 /// Implementation of OTA package for ESP32
 class Esp32OtaPackage implements OtaPackage {
   /// Properties
-  int mtu = 400; // Maximum Transmission Unit size
   int part = 16000; // Part size for firmware update
   final BluetoothCharacteristic
   notifyCharacteristic; // Characteristic for notifications
@@ -429,7 +447,7 @@ class Esp32OtaPackage implements OtaPackage {
         }
 
         /// Return the full firmware. Chunking into BLE-sized parts happens
-        /// later in `sendPart` (via `part`/`mtu`), matching the assets and
+        /// later in `sendPart` (via `part`/`mtuSize`), matching the assets and
         /// file-picker paths which also return the complete byte array.
         return bytes;
       } else {
@@ -475,7 +493,11 @@ class Esp32OtaPackage implements OtaPackage {
   }
 
   /// sendPart function which is used to send parts to the esp32
-  Future<void> sendPart(int position, Uint8List data) async {
+  Future<void> sendPart(
+    int position,
+    Uint8List data,
+    int mtuSize,
+  ) async {
     if (_cancelRequested) {
       _logger.w('sendPart aborted due to cancellation');
       return;
@@ -486,7 +508,7 @@ class Esp32OtaPackage implements OtaPackage {
     if (data.length < end) {
       end = data.length;
     }
-    int parts = (end - start) ~/ mtu;
+    int parts = (end - start) ~/ mtuSize;
 
     /// Overall transfer progress for this part, based on how many file parts
     /// the firmware was split into. Used purely for logging here.
@@ -497,14 +519,14 @@ class Esp32OtaPackage implements OtaPackage {
     _logger.d('Parts to send: $parts — overall $overallProgress%');
     for (int i = 0; i < parts; i++) {
       _logger.t('Created part $i — overall $overallProgress%');
-      Uint8List toSend = Uint8List(mtu + 2);
+      Uint8List toSend = Uint8List(mtuSize + arduinoHeaderSize);
       toSend[0] = 0XFB;
       toSend[1] = i;
       int variable = 2;
-      for (int y = 0; y < mtu; y++) {
+      for (int y = 0; y < mtuSize; y++) {
         /// toSend.append(data[(position * PART) + (MTU * i) + y])
 
-        int x = data[(position * part) + (mtu * i) + y];
+        int x = data[(position * part) + (mtuSize * i) + y];
         Uint8List list2 = Uint8List.fromList([x]);
 
         /// Copy the contents of list1 into the beginning of combinedList
@@ -519,15 +541,15 @@ class Esp32OtaPackage implements OtaPackage {
       );
       await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
     }
-    if ((end - start) % mtu != 0) {
+    if ((end - start) % mtuSize != 0) {
       _logger.t('Writing remainder part');
-      int rem = (end - start) % mtu;
-      Uint8List toSend = Uint8List(rem + 2);
+      int rem = (end - start) % mtuSize;
+      Uint8List toSend = Uint8List(rem + arduinoHeaderSize);
       toSend[0] = 0XFB;
       toSend[1] = parts;
       int variable = 2;
       for (int y = 0; y < rem; y++) {
-        int x = data[(position * part) + (mtu * parts) + y];
+        int x = data[(position * part) + (mtuSize * parts) + y];
         Uint8List list2 = Uint8List.fromList([x]);
 
         /// Copy the contents of list1 into the beginning of combinedList
@@ -564,6 +586,22 @@ class Esp32OtaPackage implements OtaPackage {
     if (firmwareType != FirmwareType.filepicker &&
         (uri == null || uri.isEmpty)) {
       throw 'uri is required for the specified firmware type.';
+    }
+
+    /// A single BLE characteristic write cannot exceed [maxMtuSize] bytes, so
+    /// reject out-of-range chunk sizes up front instead of failing mid-transfer.
+    ///
+    /// The Arduino protocol prepends a 2-byte header to every packet (see
+    /// [sendPart]), so its effective payload limit is [maxMtuSize] - 2. ESP-IDF
+    /// writes the chunk directly, so it can use the full [maxMtuSize].
+    final int maxChunkSize = updateType == UpdateType.arduino
+        ? maxMtuSize - arduinoHeaderSize
+        : maxMtuSize;
+    if (mtuSize < 1 || mtuSize > maxChunkSize) {
+      throw OtaException(
+        'mtuSize must be between 1 and $maxChunkSize bytes for '
+        '${updateType.name} (got $mtuSize).',
+      );
     }
     _cancelRequested = false;
     _isUpdating = true;
@@ -660,15 +698,12 @@ class Esp32OtaPackage implements OtaPackage {
       } else if (updateType == UpdateType.arduino) {
         final bleRepo = BleRepository();
 
-        /// Get MTU size from the device
-        int mtuSize = await device.mtu.first;
-
-        _logger.i('Starting Arduino OTA — device MTU: $mtuSize');
+        _logger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
 
         /// Prepare a byte list to write MTU size to controlCharacteristic
         Uint8List byteList = Uint8List(2);
-        byteList[0] = 200 & 0xFF;
-        byteList[1] = (200 >> 8) & 0xFF;
+        byteList[0] = mtuSize & 0xFF;
+        byteList[1] = (mtuSize >> 8) & 0xFF;
         Uint8List? binFile;
 
         /// Choose firmware source based on firmwareType. `uri` is validated as
@@ -682,7 +717,7 @@ class Esp32OtaPackage implements OtaPackage {
             _logger.t('Bin file after conversion: $binFile');
             _logger.d('Bin file length: ${binFile.length}');
           case FirmwareType.filepicker:
-            binFile = await _getFirmwareFromPickerArduino(200);
+            binFile = await _getFirmwareFromPickerArduino(mtuSize);
             _logger.t('Bin file: $binFile');
           case FirmwareType.url:
             binFile = await _getFirmwareFromUrlArduino(uri!, mtuSize);
@@ -730,7 +765,7 @@ class Esp32OtaPackage implements OtaPackage {
 
               /// Used getUint16 for a 2-byte integer
               _logger.d('Next part requested: $nxt');
-              await sendPart(nxt, binFile!);
+              await sendPart(nxt, binFile!, mtuSize);
             }
             if (value[0] == 0x0F) {
               _logger.i('OTA update complete');
@@ -774,14 +809,14 @@ class Esp32OtaPackage implements OtaPackage {
         otaInfo[0] = 0xFF;
         otaInfo[1] = (fileParts ~/ 256);
         otaInfo[2] = (fileParts % 256);
-        otaInfo[3] = (mtu ~/ 256);
-        otaInfo[4] = (mtu % 256);
+        otaInfo[3] = (mtuSize ~/ 256);
+        otaInfo[4] = (mtuSize % 256);
         _logger.d('Sending OTA info packet: $otaInfo');
         await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
 
         ///5. Divide bin file into parts
         int packageNumber = 0;
-        sendPart(0, binFile);
+        sendPart(0, binFile, mtuSize);
         double progress = (packageNumber / fileParts) * 100;
         int roundedProgress = progress.round(); // Rounded off progress value
         _logger.d('Writing part $packageNumber/$fileParts — $roundedProgress%');
