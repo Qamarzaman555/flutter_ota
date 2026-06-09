@@ -333,7 +333,14 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                                     ),
                                   ),
                                   onTap: () async {
-                                    await esp32otaPackage.cancelUpdate();
+                                    try {
+                                      await esp32otaPackage.cancelUpdate();
+                                      debugPrint("OTA cancelled");
+                                      Navigator.of(context).pop();
+                                    } catch (e) {
+                                      debugPrint("Error cancelling OTA: $e");
+                                      Navigator.of(context).pop();
+                                    }
                                     // Cancelling leaves the ESP32 mid-OTA. The
                                     // device must be reconnected before another
                                     // OTA can be started on a clean session.
@@ -346,14 +353,10 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           // Perform the OTA update with the picked binfile
                           await esp32otaPackage.updateFirmware(
                             device,
-                            UpdateType.arduino, //Update Type
-                            FirmwareType.url,
-                            uri:
-                                "https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/old%20version%201.0.0.ino.bin?alt=media&token=8e9b8183-7347-4d4c-9d84-7814ecdae634",
-                            // uri: "assets/old version 1.0.0.ino.bin",
-                            // uri:
-                            //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/new_version%201.0.1.ino.bin?alt=media&token=45ea82a0-aca6-49db-8f83-f01400ecbc6e',
-                            mtuSize: 500,
+                            UpdateType.espidf, //Update Type
+                            FirmwareType.filepicker,
+                            uri: 'assets/Release_v1.5.23-rc4.img',
+                            mtuSize: 0,
                           );
 
                           characteristicsFound =

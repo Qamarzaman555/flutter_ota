@@ -70,9 +70,9 @@ Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, writeCharacte
     * `FirmwareType.filepicker`: To select a binary firmware file from the device storage.
     * `FirmwareType.url`: For downloading firmware from a URL.
 
-5. Call `updateFirmware` with only the parameters that apply to your chosen
-   `updateType` and `firmwareType` (passing unrelated parameters throws
-   `ArgumentError`):
+5. Call `updateFirmware` with the parameters that apply to your chosen
+   `firmwareType` (`uri` is required for every type except
+   `FirmwareType.filepicker`):
 
 ```dart
 // ESP-IDF — firmware from assets
@@ -81,7 +81,7 @@ await otaPackage.updateFirmware(
   UpdateType.espidf,
   FirmwareType.assets,
   uri: 'assets/firmware.bin',
-  chunkSize: 500, // optional, ESP-IDF only (default 500)
+  mtuSize: 500, // optional (default 500)
 );
 
 // Arduino — firmware from URL
@@ -90,11 +90,10 @@ await otaPackage.updateFirmware(
   UpdateType.arduino,
   FirmwareType.url,
   uri: 'https://example.com/firmware.ino.bin',
-  packetSize: 400, // optional, Arduino only (default 400)
-  partSize: 16000, // optional, Arduino only (default 16000)
+  mtuSize: 500, // optional (default 500)
 );
 
-// Arduino — firmware from file picker (no extra params needed)
+// Arduino — firmware from file picker (no uri needed)
 await otaPackage.updateFirmware(
   device,
   UpdateType.arduino,
@@ -104,10 +103,22 @@ await otaPackage.updateFirmware(
 
 | Parameter | Applies to |
 | --- | --- |
-| `uri` | `FirmwareType.assets` and `FirmwareType.url` (required for both) |
-| `mtuSize` | `UpdateType.espidf` only (default `500`) |
-| `packetSize` | `UpdateType.arduino` only (default `400`) |
-| `partSize` | `UpdateType.arduino` only (default `16000`) |
+| `uri` | Required for every `FirmwareType` except `FirmwareType.filepicker` |
+| `mtuSize` | Both update types (default `500`); the per-packet chunk size used during transfer |
+
+### Chunk size (`mtuSize`) limits
+
+`mtuSize` is the number of firmware bytes sent per BLE packet. A single BLE
+characteristic write cannot exceed 512 bytes (the maximum attribute length in
+the Bluetooth spec, also enforced by `flutter_blue_plus` on Android and iOS), so
+`mtuSize` is validated up front and must be:
+
+* **`UpdateType.espidf`:** between `1` and `512`.
+* **`UpdateType.arduino`:** between `1` and `510`. The Arduino protocol prepends
+  a 2-byte header to every packet, so the largest usable payload is `512 - 2`.
+
+An out-of-range value throws an `OtaException` before any data is sent, so you
+get a clear error instead of a mid-transfer GATT failure.
 
 6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
 
