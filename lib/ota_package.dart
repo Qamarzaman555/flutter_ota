@@ -285,6 +285,11 @@ class Esp32OtaPackage implements OtaPackage {
   /// caused by a user cancellation, [cancelledValue] is emitted; otherwise
   /// [failedValue] is emitted.
   void _handleUpdateError(Object error) {
+    _logger.e(
+      'OTA update aborted: Device either returned an error or did not acknowledge the operation. '
+      'Some devices may not support acknowledgement.'
+      'Please ensure the device firmware supports proper OTA acknowledgement flow.',
+    );
     _logger.e('OTA update aborted', error: error);
     firmwareUpdate = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
@@ -493,11 +498,7 @@ class Esp32OtaPackage implements OtaPackage {
   }
 
   /// sendPart function which is used to send parts to the esp32
-  Future<void> sendPart(
-    int position,
-    Uint8List data,
-    int mtuSize,
-  ) async {
+  Future<void> sendPart(int position, Uint8List data, int mtuSize) async {
     if (_cancelRequested) {
       _logger.w('sendPart aborted due to cancellation');
       return;

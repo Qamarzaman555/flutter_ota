@@ -339,7 +339,6 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                                       Navigator.of(context).pop();
                                     } catch (e) {
                                       debugPrint("Error cancelling OTA: $e");
-                                      Navigator.of(context).pop();
                                     }
                                     // Cancelling leaves the ESP32 mid-OTA. The
                                     // device must be reconnected before another
@@ -354,9 +353,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           await esp32otaPackage.updateFirmware(
                             device,
                             UpdateType.espidf, //Update Type
-                            FirmwareType.filepicker,
-                            uri: 'assets/Release_v1.5.23-rc4.img',
-                            mtuSize: 0,
+                            FirmwareType.assets,
+                            uri: 'assets/Release_v1.7.1 (1).img',
+                            mtuSize: 509,
                           );
 
                           characteristicsFound =

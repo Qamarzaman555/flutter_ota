@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/scanning_connection_controller.dart';
 import 'package:ota_new_protocol/routing/routes.dart';
@@ -14,17 +16,25 @@ import 'core/permissions/check_status.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await di();
-  await PermissionEnable().check();
 
-  // Request Bluetooth and location permissions
-  Map<ph.Permission, ph.PermissionStatus> statuses = await [
+  // Start listening to the adapter state BEFORE the first permission check so
+  // `BluetoothAdapter.isBluetoothOn` can be populated (otherwise the first
+  // check sees the stale default `false`).
+  BluetoothAdapter.initBleStateStream();
+
+  // Request runtime permissions. On iOS, BLE scanning needs Bluetooth (and
+  // storage is not applicable), so only request location on Android where it is
+  // actually required for BLE scanning.
+  final permissions = <ph.Permission>[
     ph.Permission.bluetooth,
-    ph.Permission.location,
-    ph.Permission.storage, // Add storage permission here
-  ].request();
+    if (Platform.isAndroid) ...[ph.Permission.location, ph.Permission.storage],
+  ];
+  final Map<ph.Permission, ph.PermissionStatus> statuses = await permissions
+      .request();
   debugPrint("statuses: $statuses");
 
-  BluetoothAdapter.initBleStateStream();
+  await PermissionEnable().check();
+
   runApp(const MyApp());
 }
 
@@ -36,6 +46,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
