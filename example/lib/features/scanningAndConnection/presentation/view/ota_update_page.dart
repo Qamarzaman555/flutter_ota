@@ -336,7 +336,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                                     try {
                                       await esp32otaPackage.cancelUpdate();
                                       debugPrint("OTA cancelled");
-                                      Navigator.of(context).pop();
+                                      if (!mounted) {
+                                        Navigator.of(context).pop();
+                                      }
                                     } catch (e) {
                                       debugPrint("Error cancelling OTA: $e");
                                     }
@@ -352,9 +354,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
                           // Perform the OTA update with the picked binfile
                           await esp32otaPackage.updateFirmware(
                             device,
-                            UpdateType.espidf, //Update Type
-                            FirmwareType.assets,
-                            uri: 'assets/Release_v1.7.1 (1).img',
+                            UpdateType.arduino, //Update Type
+                            FirmwareType.filepicker,
+                            uri: 'assets/Release_v1.5.23-rc4.img',
                             mtuSize: 509,
                           );
 

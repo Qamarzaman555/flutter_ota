@@ -33,6 +33,57 @@ dependencies:
 flutter pub get
 ```
 
+**Platform setup**
+
+Because the package communicates over Bluetooth Low Energy, each platform needs
+the appropriate permissions and a minimum OS version configured before an update
+will run.
+
+### iOS
+
+* Set the iOS deployment target to **13.0** or higher (required by
+  `flutter_blue_plus`). In `ios/Podfile`:
+
+```ruby
+platform :ios, '13.0'
+```
+
+* Add the Bluetooth usage descriptions to `ios/Runner/Info.plist` so the system
+  permission prompt has a reason to show the user:
+
+```xml
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>This app uses Bluetooth to connect to and update the firmware of nearby ESP32 devices.</string>
+<key>NSBluetoothPeripheralUsageDescription</key>
+<string>This app uses Bluetooth to connect to and update the firmware of nearby ESP32 devices.</string>
+```
+
+### Android
+
+Add the BLE permissions to `android/app/src/main/AndroidManifest.xml`. The
+`BLUETOOTH`/`BLUETOOTH_ADMIN` permissions cover Android 11 and below, while
+`BLUETOOTH_SCAN`/`BLUETOOTH_CONNECT` cover Android 12 (API 31) and above:
+
+```xml
+<uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
+
+<!-- Android 11 (API 30) and below -->
+<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+
+<!-- Android 12 (API 31) and above -->
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+
+<!-- Required when downloading firmware from a URL -->
+<uses-permission android:name="android.permission.INTERNET"/>
+```
+
+Request the runtime permissions (Bluetooth and, on older Android versions,
+location) before starting an update. See the example app for a complete
+permission-handling flow.
+
 **Usage**
 
 1. Import the necessary libraries:
