@@ -786,7 +786,7 @@ class Esp32OtaPackage implements OtaPackage {
 
         ///2. Send 0xFD first to start reading
         Uint8List byteListData = Uint8List(1);
-        byteList[0] = 0xFD;
+        byteListData[0] = 0xFD;
         await bleRepo.writeDataCharacteristic(
           writeCharacteristic,
           byteListData,
