@@ -1,38 +1,31 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/scanning_connection_controller.dart';
 import 'package:ota_new_protocol/routing/routes.dart';
-import 'package:ota_new_protocol/utils/colors.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'app/app.dart';
 import 'app/di.dart';
-import 'common/custom_button/feedback_enabled_button.dart';
-import 'package:get/get.dart';
-import 'package:permission_handler/permission_handler.dart' as ph;
+import 'common/custom_button/primary_action_button.dart';
+import 'common/toast/show_toast.dart';
 import 'core/permissions/bluetooth_adapter.dart';
 import 'core/permissions/check_status.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await di();
 
-  // Start listening to the adapter state BEFORE the first permission check so
-  // `BluetoothAdapter.isBluetoothOn` can be populated (otherwise the first
-  // check sees the stale default `false`).
+  // Listen to adapter state before the first permission check so
+  // `BluetoothAdapter.isBluetoothOn` is not stuck on the stale default.
   BluetoothAdapter.initBleStateStream();
 
-  // Request runtime permissions. On iOS, BLE scanning needs Bluetooth (and
-  // storage is not applicable), so only request location on Android where it is
-  // actually required for BLE scanning.
   final permissions = <ph.Permission>[
     ph.Permission.bluetooth,
     if (Platform.isAndroid) ...[ph.Permission.location, ph.Permission.storage],
   ];
-  final Map<ph.Permission, ph.PermissionStatus> statuses = await permissions
-      .request();
-  debugPrint("statuses: $statuses");
-
+  await permissions.request();
   await PermissionEnable().check();
 
   runApp(const MyApp());
@@ -41,164 +34,117 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Flutter OTA Example',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: OTANewApp(),
+      home: const OTANewApp(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
+
   final String title;
+
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  HomePageController homePageController = Get.find();
+  final HomePageController _controller = Get.find();
 
   @override
   void initState() {
     super.initState();
-    // Attempt to auto-connect to the previously connected device on launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _attemptAutoConnect();
     });
   }
 
   Future<void> _attemptAutoConnect() async {
-    await homePageController.loadLastDevice();
-    if (!homePageController.hasLastDevice) return;
+    await _controller.loadLastDevice();
+    if (!_controller.hasLastDevice) return;
 
-    final connected = await homePageController.autoConnectToLastDevice();
+    final connected = await _controller.autoConnectToLastDevice();
     if (!mounted) return;
     if (connected) {
-      homePageController.connectedDevice.value = [
-        homePageController.gBleDevice!,
-      ];
+      _controller.connectedDevice.value = [_controller.gBleDevice!];
+      Get.toNamed(AppRoutes.newOtaUpdate);
+    }
+  }
+
+  Future<void> _startScanning() async {
+    if (!await PermissionEnable().check()) {
+      showToast('Bluetooth/location permission required');
+      return;
+    }
+
+    _controller.scannedDevicesList.clear();
+    Get.toNamed(AppRoutes.scanning);
+    await _controller.scanningMethod();
+  }
+
+  Future<void> _reconnectToLastDevice() async {
+    final connected = await _controller.autoConnectToLastDevice();
+    if (!mounted) return;
+    if (connected) {
       Get.toNamed(AppRoutes.newOtaUpdate);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-              child: FeedbackEnabledButton(
-                scaleFactor: 1.0,
-                translationFactorX: 0.0,
-                childWidget: Container(
-                  //height: 30,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.rectangle,
-                    border: Border.all(color: Colors.transparent, width: 2),
-                    borderRadius: BorderRadius.circular(10.0),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [secondaryColor, secondaryColor],
-                    ),
-                  ),
-                  //margin: const EdgeInsets.only(top: 10.0),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Start Scanning",
-                          style: TextStyle(
-                            color: Color(0xFFFFFFFF),
-                            fontFamily: 'Inter',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                onTap: () async {
-                  if (await PermissionEnable().check() == true) {
-                    debugPrint("in start scaning");
-                    homePageController.scannedDevicesList.clear();
-                    debugPrint("Going to scaaning view page");
-                    Get.toNamed(AppRoutes.scanning);
-                    await homePageController.scanningMethod();
-                  } else {
-                    debugPrint("permission denied");
-                  }
-                },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              PrimaryActionButton(
+                label: 'Start Scanning',
+                onTap: _startScanning,
               ),
+              Obx(() {
+                if (!_controller.hasLastDevice) {
+                  return const SizedBox.shrink();
+                }
 
-              /*GestureDetector(
-                        onTap: (){
-                          print("Tapped");
-                          Get.offNamed(AppRoutes.addNewLeoDevice);
-                        },
-                        child:
-                      )*/
-            ),
-            Obx(() {
-              if (!homePageController.hasLastDevice) {
-                return const SizedBox.shrink();
-              }
-              final bool busy = homePageController.isAutoConnecting.value;
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: OutlinedButton.icon(
-                  onPressed: busy
-                      ? null
-                      : () async {
-                          final connected = await homePageController
-                              .autoConnectToLastDevice();
-                          if (!mounted) return;
-                          if (connected) {
-                            Get.toNamed(AppRoutes.newOtaUpdate);
-                          }
-                        },
-                  icon: busy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.history),
-                  label: Text(
-                    busy
-                        ? "Connecting to ${homePageController.lastDeviceName.value}..."
-                        : "Reconnect to ${homePageController.lastDeviceName.value}",
+                final bool busy = _controller.isAutoConnecting.value;
+                final String name = _controller.lastDeviceName.value;
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : _reconnectToLastDevice,
+                    icon: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.history),
+                    label: Text(
+                      busy ? 'Connecting to $name...' : 'Reconnect to $name',
+                    ),
                   ),
-                ),
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         ),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
     );
   }
 }

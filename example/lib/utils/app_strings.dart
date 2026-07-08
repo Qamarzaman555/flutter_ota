@@ -37,11 +37,9 @@ abstract class PngAssetsText {
   static const String pistolNavbar = "assets/pngs/pistol_navbar.png";
   static const String liionSplashScreen = "assets/pngs/liion_splash-screen.png";
   static const String liionMainLogo = "assets/pngs/leo_main_logo.png";
-  static const String liionAddedDeviceImage = "assets/pngs/leo_card-top-half.png";
+  static const String liionAddedDeviceImage =
+      "assets/pngs/leo_card-top-half.png";
   static const String liionIllustration = "assets/pngs/leo_illustration.png";
-
-
-
 }
 
 abstract class SvgAssetsText {
@@ -51,10 +49,8 @@ abstract class SvgAssetsText {
   static const String leoSettingIcon = "assets/svgs/leo_settings_icon.svg";
   static const String leoAddedDeviceImage = "assets/svgs/leo_card-top-half.svg";
   static const String leoChargingIcon = "assets/svgs/leo_charging_icon.svg";
-  static const String leoChargingIconBlue = "assets/svgs/leo_charging_icon_blue.svg";
-  static const String leoGraphTimeLine = "assets/svgs/leo_graph_time_line_vector.svg";
-
-
-
-
+  static const String leoChargingIconBlue =
+      "assets/svgs/leo_charging_icon_blue.svg";
+  static const String leoGraphTimeLine =
+      "assets/svgs/leo_graph_time_line_vector.svg";
 }

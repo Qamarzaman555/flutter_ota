@@ -1,13 +1,12 @@
-
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 
 import '../features/scanningAndConnection/presentation/controller/scanning_connection_controller.dart';
 
-Future<void> di()async{
+Future<void> di() async {
   WidgetsFlutterBinding.ensureInitialized();
   Get.put(HomePageController());
- /* Get.put<HiveServices>(HiveServicesImplementation());
+  /* Get.put<HiveServices>(HiveServicesImplementation());
   Get.put(BleDeviceController());
   Get.put<BleUartController>(BleUartController());
   Get.put(HomePageController(Get.find<HiveServices>()));
@@ -24,5 +23,4 @@ Future<void> di()async{
   Get.put(ConnectionUseCase(
       Get.find<HomepageRepoImpl>()
   ));*/
-
 }

@@ -4,7 +4,6 @@ import 'bluetooth_adapter.dart';
 import 'location_enable.dart';
 import 'permissions.dart';
 
-
 class PermissionEnable {
   Future<bool> check() async {
     final bool checkBlueTooth = await BluetoothAdapter().enableBT();

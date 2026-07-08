@@ -11,7 +11,10 @@ class RoutePages {
   // static const initial = AppRoutes.navBarView;
 
   static final routes = [
-    GetPage(name: AppRoutes.splash, page: () => const MyHomePage(title: "Flutter OTA App")),
+    GetPage(
+      name: AppRoutes.splash,
+      page: () => const MyHomePage(title: "Flutter OTA App"),
+    ),
     //GetPage(name: '/', page: () => LiionApp()),
     GetPage(
       name: AppRoutes.scanning,
@@ -25,6 +28,7 @@ class RoutePages {
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 500),
     ),
+
     /*GetPage(
       name: AppRoutes.connecting,
       page: () => ConnectingPage(),
@@ -50,6 +54,5 @@ class RoutePages {
     GetPage(name: AppRoutes.addedLeoDeviceDetails, page: () => const AddedLeoDetailsView()),
     GetPage(name: AppRoutes.setChargeLimitView, page: () => const SetChargeLimitView()),
     GetPage(name: AppRoutes.feedbackView, page: () => const FeedbackView()),*/
-
   ];
 }

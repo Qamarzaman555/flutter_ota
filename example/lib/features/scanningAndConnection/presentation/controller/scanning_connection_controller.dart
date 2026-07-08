@@ -121,36 +121,26 @@ class HomePageController extends GetxController {
   }
 
   Future<void> scanningMethod() async {
-    debugPrint("In scanning method");
-    final isScanning = FlutterBluePlus.isScanningNow;
-    if (isScanning) {
+    if (FlutterBluePlus.isScanningNow) {
       await FlutterBluePlus.stopScan();
     }
 
-    await FlutterBluePlus.stopScan();
-    //Empty the Devices List before storing new value
-    scannedDevicesList.value = [];
-
+    scannedDevicesList.clear();
     await streamSubscription?.cancel();
 
     streamSubscription = FlutterBluePlus.scanResults.listen((results) {
-      for (ScanResult r in results) {
-        if (r.device.advName.isNotEmpty &&
-            !scannedDevicesList.contains(r.device)) {
-          debugPrint("device name is ${r.device.advName}");
-          scannedDevicesList.add(r.device);
-          // Listen for changes in connection state
-          r.device.connectionState.listen((connectionState) {
-            if (connectionState == BluetoothConnectionState.connected) {
-              // Remove the device from the list if it's connected
-              scannedDevicesList.remove(r.device);
-            }
-          });
-          /*if (r.device.toString().toLowerCase().contains("laser gun")) {
-                debugPrint("device name is ${r.device.advName}");
-                connectionController.devicesList.add(r.device);
-              }*/
+      for (final ScanResult result in results) {
+        final device = result.device;
+        if (device.advName.isEmpty || scannedDevicesList.contains(device)) {
+          continue;
         }
+
+        scannedDevicesList.add(device);
+        device.connectionState.listen((connectionState) {
+          if (connectionState == BluetoothConnectionState.connected) {
+            scannedDevicesList.remove(device);
+          }
+        });
       }
     });
 
@@ -167,32 +157,25 @@ class HomePageController extends GetxController {
     }
 
     try {
-      // Start from a clean state so a stale connection can't break discovery.
+      // Start clean so a stale connection can't break discovery.
       if (device.isConnected) {
         await device.disconnect();
       }
 
-      debugPrint("before trying to connect");
       await device.connect(autoConnect: false, license: License.nonprofit);
-      debugPrint("after connect");
 
       // Negotiate a larger MTU before discovering services (Android only).
       if (Platform.isAndroid) {
         await device.requestMtu(200);
-        debugPrint("mtu set");
       }
 
-      // Only safe to discover services once the device is actually connected.
       gBleServices.assignAll(await device.discoverServices());
-      debugPrint("Services discovered in connect is $gBleServices");
-
       gIsDeviceConnected.value = true;
-      // Remember this device so it can be auto-connected to next time.
       await _saveLastDevice(device);
       showToast('Connected');
       return true;
     } catch (e) {
-      debugPrint("Connection failed: $e");
+      debugPrint('Connection failed: $e');
       gIsDeviceConnected.value = false;
       try {
         await device.disconnect();
