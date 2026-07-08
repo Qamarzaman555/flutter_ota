@@ -815,9 +815,11 @@ class Esp32OtaPackage implements OtaPackage {
         _logger.d('Sending OTA info packet: $otaInfo');
         await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
 
-        ///5. Divide bin file into parts
+        ///5. Kick off the transfer with part 0. Must be awaited so a BLE write
+        /// failure on the first part is caught below and reported as
+        /// [failedValue] instead of escaping as an unhandled async exception.
         int packageNumber = 0;
-        sendPart(0, binFile, mtuSize);
+        await sendPart(0, binFile, mtuSize);
         double progress = (packageNumber / fileParts) * 100;
         int roundedProgress = progress.round(); // Rounded off progress value
         _logger.d('Writing part $packageNumber/$fileParts — $roundedProgress%');
