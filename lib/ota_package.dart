@@ -208,6 +208,7 @@ class Esp32OtaPackage implements OtaPackage {
   notifyCharacteristic; // Characteristic for notifications
   final BluetoothCharacteristic
   writeCharacteristic; //Characteristic for writing data
+  final BleRepository _bleRepository = BleRepository();
   StreamSubscription? _subscription;
   bool _firmwareUpdateSucceeded = false;
 
@@ -302,206 +303,130 @@ class Esp32OtaPackage implements OtaPackage {
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 
+  /// Splits [bytes] into fixed-size chunks for ESP-IDF BLE transfer.
+  List<Uint8List> _chunkFirmware(List<int> bytes, int chunkSize) {
+    final List<Uint8List> chunks = [];
+    for (int i = 0; i < bytes.length; i += chunkSize) {
+      final int end = i + chunkSize < bytes.length
+          ? i + chunkSize
+          : bytes.length;
+      chunks.add(Uint8List.fromList(bytes.sublist(i, end)));
+    }
+    return chunks;
+  }
+
+  Future<Uint8List> _loadFirmwareBytesFromAsset(String filePath) async {
+    final ByteData fileData = await rootBundle.load(filePath);
+    return Uint8List.fromList(fileData.buffer.asUint8List());
+  }
+
+  Future<Uint8List> _downloadFirmwareFromUrl(String url) async {
+    try {
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final Uint8List bytes = Uint8List.fromList(response.bodyBytes);
+        if (bytes.isEmpty) {
+          throw EmptyFirmwareException(
+            'Downloaded firmware is empty (0 bytes) from $url.',
+          );
+        }
+        return bytes;
+      }
+
+      throw FirmwareDownloadException(
+        'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
+        statusCode: response.statusCode,
+      );
+    } on OtaException {
+      rethrow;
+    } catch (e) {
+      throw FirmwareDownloadException(
+        'Error fetching firmware from URL',
+        cause: e,
+      );
+    }
+  }
+
+  Future<Uint8List?> _pickFirmwareBytes() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.any,
+      //allowedExtensions: ['bin'],
+    );
+
+    if (result == null || result.files.isEmpty) {
+      _logger.w('No firmware file selected');
+      return null;
+    }
+
+    final file = result.files.first;
+    _logger.d('Selected firmware file: ${file.name}');
+    try {
+      return Uint8List.fromList(await File(file.path!).readAsBytes());
+    } on OtaException {
+      rethrow;
+    } catch (e) {
+      throw OtaException('Error getting firmware data', e);
+    }
+  }
+
   /// Function to read binary firmware file and split it into chunks
   Future<List<Uint8List>> _readBinaryFile(String filePath, int mtuSize) async {
     _logger.d('Reading binary firmware from asset path: $filePath');
-    ByteData fileData = await rootBundle.load(filePath);
-    List<int> bytes = fileData.buffer.asUint8List();
-    _logger.t('Firmware bytes: ${Uint8List.fromList(bytes)}');
-    List<Uint8List> firmwareData = [];
-    // Split file data into chunks based on MTU size
-    for (int i = 0; i < bytes.length; i += mtuSize) {
-      int end = i + mtuSize;
-      if (end > bytes.length) {
-        end = bytes.length;
-      }
-      firmwareData.add(Uint8List.fromList(bytes.sublist(i, end)));
-    }
-    return firmwareData; // Return firmware data chunks
+    final Uint8List bytes = await _loadFirmwareBytesFromAsset(filePath);
+    _logger.t('Firmware bytes: $bytes');
+    return _chunkFirmware(bytes, mtuSize);
   }
 
   /// Get firmware chunks from file picker
   Future<List<Uint8List>> _getFirmwareFromPicker(int mtuSize) async {
     _logger.d('Chunk size (MTU) in file picker: $mtuSize');
 
-    final result = await FilePicker.pickFiles(
-      type: FileType.any,
-      //allowedExtensions: ['bin'],
-    );
-
-    if (result == null || result.files.isEmpty) {
-      _logger.w('No firmware file selected');
-      return []; // Return an empty list when no file is picked
+    final Uint8List? bytes = await _pickFirmwareBytes();
+    if (bytes == null) {
+      return [];
     }
 
-    final file = result.files.first;
-    _logger.d('Selected firmware file: ${file.name}');
-    try {
-      final firmwareData = await _openFileAndGetFirmwareData(file, mtuSize);
-
-      if (firmwareData.isEmpty) {
-        throw EmptyFirmwareException(
-          'Empty firmware data. Please select a valid firmware file.',
-        );
-      }
-
-      return firmwareData;
-    } on OtaException {
-      rethrow;
-    } catch (e) {
-      throw OtaException('Error getting firmware data', e);
+    if (bytes.isEmpty) {
+      throw EmptyFirmwareException(
+        'Empty firmware data. Please select a valid firmware file.',
+      );
     }
+
+    _logger.d('Dividing firmware data into chunks');
+    return _chunkFirmware(bytes, mtuSize);
   }
 
-  /// Get firmware chunks from file picker
+  /// Get firmware bytes from file picker for the Arduino path.
   Future<Uint8List> _getFirmwareFromPickerArduino(int mtuSize) async {
     _logger.d('Chunk size (MTU) in file picker (Arduino): $mtuSize');
-    final Uint8List binfiledata;
 
-    final result = await FilePicker.pickFiles(
-      type: FileType.any,
-      //allowedExtensions: ['bin'],
-    );
-
-    if (result == null || result.files.isEmpty) {
-      _logger.w('No firmware file selected');
-      return Uint8List(0); // Return an empty list when no file is picked
+    final Uint8List? bytes = await _pickFirmwareBytes();
+    if (bytes == null) {
+      return Uint8List(0);
     }
 
-    final file = result.files.first;
-    _logger.d('Selected firmware file: ${file.name}');
-    try {
-      final bytes = await File(file.path!).readAsBytes();
-      binfiledata = Uint8List.fromList(bytes);
-
-      if (binfiledata.isEmpty) {
-        throw EmptyFirmwareException(
-          'Empty firmware data. Please select a valid firmware file.',
-        );
-      }
-
-      return binfiledata;
-    } on OtaException {
-      rethrow;
-    } catch (e) {
-      throw OtaException('Error getting firmware data', e);
+    if (bytes.isEmpty) {
+      throw EmptyFirmwareException(
+        'Empty firmware data. Please select a valid firmware file.',
+      );
     }
+
+    return bytes;
   }
 
   Future<List<Uint8List>> _getFirmwareFromUrl(String url, int mtuSize) async {
-    try {
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(Duration(seconds: 10));
-
-      /// Check if the HTTP request was successful (status code 200)
-      if (response.statusCode == 200) {
-        final List<int> bytes = response.bodyBytes;
-
-        /// Reject an empty response body before chunking so we fail early.
-        if (bytes.isEmpty) {
-          throw EmptyFirmwareException(
-            'Downloaded firmware is empty (0 bytes) from $url.',
-          );
-        }
-
-        final int chunkSize = mtuSize;
-        List<Uint8List> chunks = [];
-        for (int i = 0; i < bytes.length; i += chunkSize) {
-          int end = i + chunkSize;
-          if (end > bytes.length) {
-            end = bytes.length;
-          }
-          Uint8List chunk = Uint8List.fromList(bytes.sublist(i, end));
-          chunks.add(chunk);
-        }
-        return chunks;
-      } else {
-        /// Handle HTTP error (e.g., status code is not 200)
-        throw FirmwareDownloadException(
-          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
-          statusCode: response.statusCode,
-        );
-      }
-    } on OtaException {
-      rethrow;
-    } catch (e) {
-      /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw FirmwareDownloadException(
-        'Error fetching firmware from URL',
-        cause: e,
-      );
-    }
+    final Uint8List bytes = await _downloadFirmwareFromUrl(url);
+    return _chunkFirmware(bytes, mtuSize);
   }
 
   Future<Uint8List> _getFirmwareFromUrlArduino(String url, int mtuSize) async {
-    try {
-      final response = await http
-          .get(Uri.parse(url))
-          .timeout(Duration(seconds: 10));
-
-      /// Check if the HTTP request was successful (status code 200)
-      if (response.statusCode == 200) {
-        _logger.d('Response status code: ${response.statusCode}');
-
-        /// Firmware is binary, so work with raw bytes. Do NOT log
-        /// `response.body`: decoding a `.bin` as text can throw or dump the
-        /// whole firmware into the log.
-        final Uint8List bytes = Uint8List.fromList(response.bodyBytes);
-        _logger.d('Downloaded firmware length: ${bytes.length} bytes');
-
-        /// Reject an empty response body before sending so we fail early.
-        if (bytes.isEmpty) {
-          _logger.w('Downloaded firmware is empty (0 bytes) from $url.');
-          throw EmptyFirmwareException(
-            'Downloaded firmware is empty (0 bytes) from $url.',
-          );
-        }
-
-        /// Return the full firmware. Chunking into BLE-sized parts happens
-        /// later in `_sendPart` (via `_partSize`/`mtuSize`), matching the assets and
-        /// file-picker paths which also return the complete byte array.
-        return bytes;
-      } else {
-        _logger.w(
-          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
-        );
-
-        /// Handle HTTP error (e.g., status code is not 200)
-        throw FirmwareDownloadException(
-          'HTTP Error: ${response.statusCode} - ${response.reasonPhrase}',
-          statusCode: response.statusCode,
-        );
-      }
-    } on OtaException {
-      rethrow;
-    } catch (e) {
-      _logger.e('Error fetching firmware from URL', error: e);
-
-      /// Handle other errors (e.g., timeout, network connectivity issues)
-      throw FirmwareDownloadException(
-        'Error fetching firmware from URL',
-        cause: e,
-      );
-    }
-  }
-
-  /// Open file, read bytes, and split into chunks
-  Future<List<Uint8List>> _openFileAndGetFirmwareData(
-    PlatformFile file,
-    int mtuSize,
-  ) async {
-    final bytes = await File(file.path!).readAsBytes();
-    List<Uint8List> firmwareData = [];
-    _logger.d('Dividing firmware data into chunks');
-    for (int i = 0; i < bytes.length; i += mtuSize) {
-      int end = i + mtuSize;
-      if (end > bytes.length) {
-        end = bytes.length;
-      }
-      firmwareData.add(Uint8List.fromList(bytes.sublist(i, end)));
-    }
-    return firmwareData;
+    _logger.d('Downloading firmware (Arduino) from: $url');
+    final Uint8List bytes = await _downloadFirmwareFromUrl(url);
+    _logger.d('Downloaded firmware length: ${bytes.length} bytes');
+    return bytes;
   }
 
   /// Sends one Arduino firmware slice over BLE.
@@ -510,7 +435,6 @@ class Esp32OtaPackage implements OtaPackage {
       _logger.w('sendPart aborted due to cancellation');
       return;
     }
-    final bleRepo = BleRepository();
     int start = (position * _partSize);
     int end = (position + 1) * _partSize;
     if (data.length < end) {
@@ -547,7 +471,7 @@ class Esp32OtaPackage implements OtaPackage {
       _logger.t(
         'Writing data, payload length is ${toSend.length} — overall $overallProgress%',
       );
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
+      await _bleRepository.writeDataCharacteristic(writeCharacteristic, toSend);
     }
     if ((end - start) % mtuSize != 0) {
       _logger.t('Writing remainder part');
@@ -566,7 +490,7 @@ class Esp32OtaPackage implements OtaPackage {
       }
 
       _logger.t('Writing remainder payload');
-      await bleRepo.writeDataCharacteristic(writeCharacteristic, toSend);
+      await _bleRepository.writeDataCharacteristic(writeCharacteristic, toSend);
     }
 
     Uint8List update = Uint8List.fromList([
@@ -577,7 +501,7 @@ class Esp32OtaPackage implements OtaPackage {
       (position % 256),
     ]);
 
-    await bleRepo.writeDataCharacteristic(writeCharacteristic, update);
+    await _bleRepository.writeDataCharacteristic(writeCharacteristic, update);
     _logger.t('Sent part update marker: $update');
   }
 
@@ -616,8 +540,6 @@ class Esp32OtaPackage implements OtaPackage {
     _isUpdating = true;
     try {
       if (updateType == UpdateType.espidf) {
-        final bleRepo = BleRepository();
-
         /// Chunk size used to split the firmware into packets (defaults to 500).
         _logger.i('Starting ESP-IDF OTA — chunk size (MTU): $mtuSize');
 
@@ -647,14 +569,17 @@ class Esp32OtaPackage implements OtaPackage {
         }
 
         /// Write x01 to the controlCharacteristic and check if it returns value of 0x02
-        await bleRepo.writeDataCharacteristic(writeCharacteristic, byteList);
-        await bleRepo.writeDataCharacteristic(
+        await _bleRepository.writeDataCharacteristic(
+          writeCharacteristic,
+          byteList,
+        );
+        await _bleRepository.writeDataCharacteristic(
           notifyCharacteristic,
           Uint8List.fromList([1]),
         );
 
         /// Read value from controlCharacteristic
-        List<int> value = await bleRepo
+        List<int> value = await _bleRepository
             .readCharacteristic(notifyCharacteristic)
             .timeout(Duration(seconds: 10));
         _logger.d('Control characteristic returned: ${value[0]}');
@@ -671,7 +596,10 @@ class Esp32OtaPackage implements OtaPackage {
           }
 
           /// Write firmware chunks to dataCharacteristic
-          await bleRepo.writeDataCharacteristic(writeCharacteristic, chunk);
+          await _bleRepository.writeDataCharacteristic(
+            writeCharacteristic,
+            chunk,
+          );
           packageNumber++;
 
           double progress = (packageNumber / binaryChunks.length) * 100;
@@ -683,13 +611,13 @@ class Esp32OtaPackage implements OtaPackage {
         }
 
         /// Write x04 to the controlCharacteristic to finish the update process
-        await bleRepo.writeDataCharacteristic(
+        await _bleRepository.writeDataCharacteristic(
           notifyCharacteristic,
           Uint8List.fromList([4]),
         );
 
         /// Check if controlCharacteristic reads 0x05, indicating OTA update finished
-        value = await bleRepo
+        value = await _bleRepository
             .readCharacteristic(notifyCharacteristic)
             .timeout(Duration(seconds: 600));
         _logger.d('Control characteristic returned: ${value[0]}');
@@ -705,8 +633,6 @@ class Esp32OtaPackage implements OtaPackage {
           _completeUpdate(failedValue);
         }
       } else if (updateType == UpdateType.arduino) {
-        final bleRepo = BleRepository();
-
         _logger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
 
         /// Prepare a byte list to write MTU size to controlCharacteristic
@@ -720,9 +646,7 @@ class Esp32OtaPackage implements OtaPackage {
         /// [FirmwareType.filepicker], so `uri!` is safe here.
         switch (firmwareType) {
           case FirmwareType.assets:
-            ByteData fileData = await rootBundle.load(uri!);
-            List<int> bytes = fileData.buffer.asUint8List();
-            binFile = Uint8List.fromList(bytes);
+            binFile = await _loadFirmwareBytesFromAsset(uri!);
             _logger.t('Bin file after conversion: $binFile');
             _logger.d('Bin file length: ${binFile.length}');
           case FirmwareType.filepicker:
@@ -795,7 +719,7 @@ class Esp32OtaPackage implements OtaPackage {
         ///2. Send 0xFD first to start reading
         Uint8List byteListData = Uint8List(1);
         byteListData[0] = 0xFD;
-        await bleRepo.writeDataCharacteristic(
+        await _bleRepository.writeDataCharacteristic(
           writeCharacteristic,
           byteListData,
         );
@@ -810,7 +734,10 @@ class Esp32OtaPackage implements OtaPackage {
         fileSize[3] = (fileLen >> 8) & 0xFF; // Third most significant byte
         fileSize[4] = fileLen & 0xFF; // Least significant byte
         _logger.d('Sending file size packet: $fileSize');
-        await bleRepo.writeDataCharacteristic(writeCharacteristic, fileSize);
+        await _bleRepository.writeDataCharacteristic(
+          writeCharacteristic,
+          fileSize,
+        );
 
         ///4. Send 0xFF appended with other info - see code below
         ///--------> 3rd step create and then send otaInfo
@@ -821,7 +748,10 @@ class Esp32OtaPackage implements OtaPackage {
         otaInfo[3] = (mtuSize ~/ 256);
         otaInfo[4] = (mtuSize % 256);
         _logger.d('Sending OTA info packet: $otaInfo');
-        await bleRepo.writeDataCharacteristic(writeCharacteristic, otaInfo);
+        await _bleRepository.writeDataCharacteristic(
+          writeCharacteristic,
+          otaInfo,
+        );
 
         ///5. Kick off the transfer with part 0. Must be awaited so a BLE write
         /// failure on the first part is caught below and reported as
