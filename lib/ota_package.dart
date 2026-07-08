@@ -64,8 +64,12 @@ abstract class OtaPackage {
     int mtuSize,
   });
 
-  /// Property to track firmware update status
-  bool firmwareUpdate = false;
+  /// Whether the most recent OTA update completed successfully.
+  ///
+  /// Read-only; updated internally when an update reaches a terminal state.
+  /// Prefer listening to [percentageStream] for progress and terminal values
+  /// ([cancelledValue], [failedValue], or `100`).
+  bool get firmwareUpdate;
 
   /// Stream to provide progress percentage.
   ///
@@ -122,7 +126,8 @@ const int failedValue = -2;
 const int maxMtuSize = 512;
 
 /// Number of header bytes the Arduino OTA protocol prepends to every data
-/// packet (`0xFB` marker + part index — see [Esp32OtaPackage.sendPart]).
+/// packet (`0xFB` marker + part index — see Arduino send-part logic in
+/// [Esp32OtaPackage]).
 ///
 /// Because of this overhead an Arduino packet on the wire is `mtuSize + 2`
 /// bytes, so the largest usable `mtuSize` for the Arduino path is
@@ -196,16 +201,15 @@ class BleRepository {
 
 /// Implementation of OTA package for ESP32
 class Esp32OtaPackage implements OtaPackage {
-  /// Properties
-  int part = 16000; // Part size for firmware update
+  /// Arduino firmware is transferred in fixed-size slices before BLE chunking.
+  static const int _partSize = 16000;
+
   final BluetoothCharacteristic
   notifyCharacteristic; // Characteristic for notifications
   final BluetoothCharacteristic
   writeCharacteristic; //Characteristic for writing data
-  StreamSubscription?
-  subscription; // declare subscription as an instance variable
-  @override
-  bool firmwareUpdate = false; // Flag indicating firmware update status
+  StreamSubscription? _subscription;
+  bool _firmwareUpdateSucceeded = false;
 
   bool _cancelRequested = false; // Flag indicating a cancellation was requested
   bool _isUpdating = false; // Flag indicating an update is currently running
@@ -214,10 +218,13 @@ class Esp32OtaPackage implements OtaPackage {
       StreamController<int>.broadcast();
 
   @override
-  Stream<int> get percentageStream => _percentageController.stream; // Getter for percentage update stream
+  Stream<int> get percentageStream => _percentageController.stream;
 
   @override
   bool get isUpdating => _isUpdating;
+
+  @override
+  bool get firmwareUpdate => _firmwareUpdateSucceeded;
 
   /// Constructor
   Esp32OtaPackage(this.notifyCharacteristic, this.writeCharacteristic);
@@ -228,8 +235,8 @@ class Esp32OtaPackage implements OtaPackage {
     if (!_isUpdating) return;
     _logger.w('OTA update cancellation requested');
     _cancelRequested = true;
-    await subscription?.cancel();
-    subscription = null;
+    await _subscription?.cancel();
+    _subscription = null;
     _completeUpdate(cancelledValue);
   }
 
@@ -241,8 +248,8 @@ class Esp32OtaPackage implements OtaPackage {
   /// shutting down). Safe to call more than once.
   @override
   Future<void> dispose() async {
-    await subscription?.cancel();
-    subscription = null;
+    await _subscription?.cancel();
+    _subscription = null;
     if (!_percentageController.isClosed) {
       await _percentageController.close();
     }
@@ -272,8 +279,8 @@ class Esp32OtaPackage implements OtaPackage {
     // Emit the terminal value first so listeners receive it before the
     // stream's done event, then close.
     _percentageController.add(value);
-    subscription?.cancel();
-    subscription = null;
+    _subscription?.cancel();
+    _subscription = null;
     _percentageController.close();
   }
 
@@ -291,7 +298,7 @@ class Esp32OtaPackage implements OtaPackage {
       'Please ensure the device firmware supports proper OTA acknowledgement flow.',
     );
     _logger.e('OTA update aborted', error: error);
-    firmwareUpdate = false;
+    _firmwareUpdateSucceeded = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 
@@ -452,7 +459,7 @@ class Esp32OtaPackage implements OtaPackage {
         }
 
         /// Return the full firmware. Chunking into BLE-sized parts happens
-        /// later in `sendPart` (via `part`/`mtuSize`), matching the assets and
+        /// later in `_sendPart` (via `_partSize`/`mtuSize`), matching the assets and
         /// file-picker paths which also return the complete byte array.
         return bytes;
       } else {
@@ -497,15 +504,15 @@ class Esp32OtaPackage implements OtaPackage {
     return firmwareData;
   }
 
-  /// sendPart function which is used to send parts to the esp32
-  Future<void> sendPart(int position, Uint8List data, int mtuSize) async {
+  /// Sends one Arduino firmware slice over BLE.
+  Future<void> _sendPart(int position, Uint8List data, int mtuSize) async {
     if (_cancelRequested) {
       _logger.w('sendPart aborted due to cancellation');
       return;
     }
     final bleRepo = BleRepository();
-    int start = (position * part);
-    int end = (position + 1) * part;
+    int start = (position * _partSize);
+    int end = (position + 1) * _partSize;
     if (data.length < end) {
       end = data.length;
     }
@@ -513,7 +520,7 @@ class Esp32OtaPackage implements OtaPackage {
 
     /// Overall transfer progress for this part, based on how many file parts
     /// the firmware was split into. Used purely for logging here.
-    int fileParts = (data.length / part).ceil();
+    int fileParts = (data.length / _partSize).ceil();
     int overallProgress = fileParts == 0
         ? 0
         : (((position + 1) / fileParts) * 100).round();
@@ -527,7 +534,7 @@ class Esp32OtaPackage implements OtaPackage {
       for (int y = 0; y < mtuSize; y++) {
         /// toSend.append(data[(position * PART) + (MTU * i) + y])
 
-        int x = data[(position * part) + (mtuSize * i) + y];
+        int x = data[(position * _partSize) + (mtuSize * i) + y];
         Uint8List list2 = Uint8List.fromList([x]);
 
         /// Copy the contents of list1 into the beginning of combinedList
@@ -550,7 +557,7 @@ class Esp32OtaPackage implements OtaPackage {
       toSend[1] = parts;
       int variable = 2;
       for (int y = 0; y < rem; y++) {
-        int x = data[(position * part) + (mtuSize * parts) + y];
+        int x = data[(position * _partSize) + (mtuSize * parts) + y];
         Uint8List list2 = Uint8List.fromList([x]);
 
         /// Copy the contents of list1 into the beginning of combinedList
@@ -593,7 +600,7 @@ class Esp32OtaPackage implements OtaPackage {
     /// reject out-of-range chunk sizes up front instead of failing mid-transfer.
     ///
     /// The Arduino protocol prepends a 2-byte header to every packet (see
-    /// [sendPart]), so its effective payload limit is [maxMtuSize] - 2. ESP-IDF
+    /// [_sendPart]), so its effective payload limit is [maxMtuSize] - 2. ESP-IDF
     /// writes the chunk directly, so it can use the full [maxMtuSize].
     final int maxChunkSize = updateType == UpdateType.arduino
         ? maxMtuSize - arduinoHeaderSize
@@ -605,6 +612,7 @@ class Esp32OtaPackage implements OtaPackage {
       );
     }
     _cancelRequested = false;
+    _firmwareUpdateSucceeded = false;
     _isUpdating = true;
     try {
       if (updateType == UpdateType.espidf) {
@@ -657,7 +665,7 @@ class Esp32OtaPackage implements OtaPackage {
           /// Abort sending if a cancellation was requested
           if (_cancelRequested) {
             _logger.w('OTA update cancelled while sending firmware');
-            firmwareUpdate = false;
+            _firmwareUpdateSucceeded = false;
             _completeUpdate(cancelledValue);
             return;
           }
@@ -688,12 +696,12 @@ class Esp32OtaPackage implements OtaPackage {
 
         if (value[0] == 5) {
           _logger.i('OTA update finished successfully');
-          firmwareUpdate = true; // Firmware update was successful
+          _firmwareUpdateSucceeded = true; // Firmware update was successful
           // All packets transferred and acknowledged: emit 100% and dispose.
           _completeUpdate(100);
         } else {
           _logger.e('OTA update failed (unexpected status ${value[0]})');
-          firmwareUpdate = false; // Firmware update failed
+          _firmwareUpdateSucceeded = false; // Firmware update failed
           _completeUpdate(failedValue);
         }
       } else if (updateType == UpdateType.arduino) {
@@ -731,18 +739,18 @@ class Esp32OtaPackage implements OtaPackage {
         }
 
         int fileLen = binFile.length;
-        int fileParts = (fileLen / part).ceil();
+        int fileParts = (fileLen / _partSize).ceil();
         _logger.d('Firmware length: $fileLen bytes, file parts: $fileParts');
 
         ///1. Start stream which listens to the notification advertisement
         await notifyCharacteristic.setNotifyValue(true);
-        subscription = notifyCharacteristic.onValueReceived.listen((
+        _subscription = notifyCharacteristic.onValueReceived.listen((
           value,
         ) async {
           /// Stop reacting to notifications once a cancellation is requested
           if (_cancelRequested) {
             _logger.w('OTA update cancelled while sending firmware');
-            firmwareUpdate = false;
+            _firmwareUpdateSucceeded = false;
             _completeUpdate(cancelledValue);
             return;
           }
@@ -766,11 +774,11 @@ class Esp32OtaPackage implements OtaPackage {
 
               /// Used getUint16 for a 2-byte integer
               _logger.d('Next part requested: $nxt');
-              await sendPart(nxt, binFile!, mtuSize);
+              await _sendPart(nxt, binFile!, mtuSize);
             }
             if (value[0] == 0x0F) {
               _logger.i('OTA update complete');
-              firmwareUpdate = true;
+              _firmwareUpdateSucceeded = true;
               // Final part acknowledged: emit 100% and dispose.
               _completeUpdate(100);
             }
@@ -819,7 +827,7 @@ class Esp32OtaPackage implements OtaPackage {
         /// failure on the first part is caught below and reported as
         /// [failedValue] instead of escaping as an unhandled async exception.
         int packageNumber = 0;
-        await sendPart(0, binFile, mtuSize);
+        await _sendPart(0, binFile, mtuSize);
         double progress = (packageNumber / fileParts) * 100;
         int roundedProgress = progress.round(); // Rounded off progress value
         _logger.d('Writing part $packageNumber/$fileParts — $roundedProgress%');
