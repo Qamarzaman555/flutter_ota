@@ -586,7 +586,7 @@ class Esp32OtaPackage implements OtaPackage {
   }) async {
     if (firmwareType != FirmwareType.filepicker &&
         (uri == null || uri.isEmpty)) {
-      throw 'uri is required for the specified firmware type.';
+      throw OtaException('uri is required for the specified firmware type.');
     }
 
     /// A single BLE characteristic write cannot exceed [maxMtuSize] bytes, so
