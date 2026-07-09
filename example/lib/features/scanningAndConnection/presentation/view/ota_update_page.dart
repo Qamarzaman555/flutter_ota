@@ -234,8 +234,7 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
       await otaPackage.updateFirmware(
         device,
         UpdateType.arduino,
-        FirmwareType.assets,
-        uri: 'assets/1.0.0-16kb.ino.bin',
+        FirmwareType.filepicker,
         mtuSize: OtaBleConstants.arduinoMtuSize,
       );
     } on OtaException catch (e) {

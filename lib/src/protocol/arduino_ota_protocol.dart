@@ -47,13 +47,8 @@ class ArduinoOtaProtocol {
       final Uint8List toSend = Uint8List(mtuSize + arduinoHeaderSize);
       toSend[0] = 0xFB;
       toSend[1] = i;
-      int variable = 2;
-      for (int y = 0; y < mtuSize; y++) {
-        final int x = data[(position * partSize) + (mtuSize * i) + y];
-        final Uint8List list2 = Uint8List.fromList([x]);
-        toSend.setRange(variable, variable + list2.length, list2);
-        variable = variable + list2.length;
-      }
+      final int chunkStart = (position * partSize) + (mtuSize * i);
+      toSend.setRange(2, 2 + mtuSize, data, chunkStart);
 
       verboseTrace(
         'Writing data, payload length is ${toSend.length} — overall $overallProgress%',
@@ -70,13 +65,8 @@ class ArduinoOtaProtocol {
       final Uint8List toSend = Uint8List(rem + arduinoHeaderSize);
       toSend[0] = 0xFB;
       toSend[1] = parts;
-      int variable = 2;
-      for (int y = 0; y < rem; y++) {
-        final int x = data[(position * partSize) + (mtuSize * parts) + y];
-        final Uint8List list2 = Uint8List.fromList([x]);
-        toSend.setRange(variable, variable + list2.length, list2);
-        variable = variable + list2.length;
-      }
+      final int chunkStart = (position * partSize) + (mtuSize * parts);
+      toSend.setRange(2, 2 + rem, data, chunkStart);
 
       verboseTrace('Writing remainder payload');
       await _bleRepository.writeDataCharacteristic(
