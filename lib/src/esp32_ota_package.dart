@@ -138,7 +138,7 @@ class Esp32OtaPackage implements OtaPackage {
   }) async {
     otaLogger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
 
-    final Uint8List binFile = switch (firmwareType) {
+    final Uint8List firmware = switch (firmwareType) {
       FirmwareType.assets => await _loadArduinoAssetFirmware(uri!),
       FirmwareType.filepicker => await _firmwareLoader.loadRawFromPicker(
         mtuSize,
@@ -146,13 +146,17 @@ class Esp32OtaPackage implements OtaPackage {
       FirmwareType.url => await _firmwareLoader.loadRawFromUrl(uri!),
     };
 
-    if (binFile.isEmpty) {
+    if (firmware.isEmpty) {
       throw EmptyFirmwareException();
     }
 
-    final int fileLen = binFile.length;
-    final int fileParts = (fileLen / ArduinoOtaProtocol.partSize).ceil();
-    otaLogger.d('Firmware length: $fileLen bytes, file parts: $fileParts');
+    final int firmwareByteLength = firmware.length;
+    final int totalSegmentCount =
+        (firmwareByteLength / ArduinoOtaProtocol.firmwareSegmentSize).ceil();
+    otaLogger.d(
+      'Firmware length: $firmwareByteLength bytes, '
+      'segments: $totalSegmentCount',
+    );
 
     final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
       bleRepository: _bleRepository,
@@ -171,17 +175,25 @@ class Esp32OtaPackage implements OtaPackage {
 
       try {
         verboseTrace('Received notification value: $value');
-        final double progress = (value[2] / fileParts) * 100;
+        final int reportedSegmentIndex = value[2];
+        final double progress =
+            (reportedSegmentIndex / totalSegmentCount) * 100;
         final int roundedProgress = progress.round();
-        otaLogger.d('Writing part ${value[2]}/$fileParts — $roundedProgress%');
+        otaLogger.d(
+          'Segment $reportedSegmentIndex/$totalSegmentCount — $roundedProgress%',
+        );
         _emitPercentage(roundedProgress);
 
         if (value[0] == 0xF1) {
           final Uint8List bytes = Uint8List.fromList([value[1], value[2]]);
           final ByteData byteData = ByteData.sublistView(bytes);
-          final int nxt = byteData.getUint16(0);
-          otaLogger.d('Next part requested: $nxt');
-          await protocol.sendPart(nxt, binFile, mtuSize);
+          final int nextSegmentIndex = byteData.getUint16(0);
+          otaLogger.d('Next segment requested: $nextSegmentIndex');
+          await protocol.sendFirmwareSegment(
+            nextSegmentIndex,
+            firmware,
+            mtuSize,
+          );
         }
         if (value[0] == 0x0F) {
           otaLogger.i('OTA update complete');
@@ -197,24 +209,22 @@ class Esp32OtaPackage implements OtaPackage {
     });
 
     await protocol.sendHandshake(
-      fileLen: fileLen,
-      fileParts: fileParts,
+      firmwareByteLength: firmwareByteLength,
+      totalSegmentCount: totalSegmentCount,
       mtuSize: mtuSize,
     );
 
-    const int packageNumber = 0;
-    await protocol.sendPart(0, binFile, mtuSize);
-    final double progress = (packageNumber / fileParts) * 100;
-    final int roundedProgress = progress.round();
-    otaLogger.d('Writing part $packageNumber/$fileParts — $roundedProgress%');
-    _emitPercentage(roundedProgress);
+    const int initialSegmentIndex = 0;
+    await protocol.sendFirmwareSegment(initialSegmentIndex, firmware, mtuSize);
+    _emitPercentage(0);
+    otaLogger.d('Started segment $initialSegmentIndex/$totalSegmentCount — 0%');
   }
 
   Future<Uint8List> _loadArduinoAssetFirmware(String uri) async {
-    final binFile = await _firmwareLoader.loadBytesFromAsset(uri);
-    verboseTrace('Bin file after conversion: $binFile');
-    otaLogger.d('Bin file length: ${binFile.length}');
-    return binFile;
+    final firmware = await _firmwareLoader.loadBytesFromAsset(uri);
+    verboseTrace('Loaded firmware bytes: $firmware');
+    otaLogger.d('Firmware length: ${firmware.length} bytes');
+    return firmware;
   }
 
   @override

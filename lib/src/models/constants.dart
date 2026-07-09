@@ -14,8 +14,8 @@ const int failedValue = -2;
 /// [Esp32OtaPackage.updateFirmware] rejects any chunk that would exceed it.
 const int maxMtuSize = 512;
 
-/// Number of header bytes the Arduino OTA protocol prepends to every data
-/// packet (`0xFB` marker + part index — see [ArduinoOtaProtocol]).
+/// Number of header bytes the Arduino OTA protocol prepends to every BLE data
+/// packet (`0xFB` marker + packet index — see [ArduinoOtaProtocol]).
 ///
 /// Because of this overhead an Arduino packet on the wire is `mtuSize + 2`
 /// bytes, so the largest usable `mtuSize` for the Arduino path is

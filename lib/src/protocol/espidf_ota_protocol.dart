@@ -50,7 +50,7 @@ class EspIdfOtaProtocol {
         .timeout(const Duration(seconds: 10));
     otaLogger.d('Control characteristic returned: ${value[0]}');
 
-    int packageNumber = 0;
+    int chunkIndex = 0;
     otaLogger.i('Sending ${binaryChunks.length} firmware chunks');
     for (final Uint8List chunk in binaryChunks) {
       if (_isCancelRequested()) {
@@ -59,12 +59,12 @@ class EspIdfOtaProtocol {
       }
 
       await _bleRepository.writeDataCharacteristic(_writeCharacteristic, chunk);
-      packageNumber++;
+      chunkIndex++;
 
-      final double progress = (packageNumber / binaryChunks.length) * 100;
+      final double progress = (chunkIndex / binaryChunks.length) * 100;
       final int roundedProgress = progress.round();
       otaLogger.d(
-        'Writing package $packageNumber/${binaryChunks.length} — $roundedProgress%',
+        'Writing chunk $chunkIndex/${binaryChunks.length} — $roundedProgress%',
       );
       _onProgress(roundedProgress);
     }
