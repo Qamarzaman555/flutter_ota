@@ -85,6 +85,12 @@ class Esp32OtaPackage implements OtaPackage {
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 
+  void _failArduinoOta(String reason, [Object? cause]) {
+    otaLogger.e('Arduino OTA failed: $reason', error: cause);
+    _firmwareUpdateSucceeded = false;
+    _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
+  }
+
   Future<void> _runEspIdfUpdate({
     required FirmwareType firmwareType,
     required String? uri,
@@ -182,51 +188,58 @@ class Esp32OtaPackage implements OtaPackage {
 
         final int messageType = value[0];
 
-        if (messageType == 0x0F) {
-          otaLogger.i('OTA update complete');
-          _firmwareUpdateSucceeded = true;
-          _completeUpdate(100);
-          return;
-        }
+        switch (messageType) {
+          case 0x0F:
+            otaLogger.i('OTA update complete');
+            _firmwareUpdateSucceeded = true;
+            _completeUpdate(100);
+            return;
+          case 0xF2:
+            otaLogger.i('New bin file installation begins on ESP32');
+            return;
+          case 0xF1:
+            if (value.length < 3) {
+              _failArduinoOta(
+                'Short segment request (length ${value.length})',
+              );
+              return;
+            }
 
-        if (messageType == 0xF2) {
-          otaLogger.i('New bin file installation begins on ESP32');
-          return;
-        }
+            final int segmentIndex = (value[1] << 8) | value[2];
+            if (segmentIndex >= totalSegmentCount) {
+              _failArduinoOta(
+                'Out-of-range segment index $segmentIndex '
+                '(expected 0..${totalSegmentCount - 1})',
+              );
+              return;
+            }
 
-        if (value.length < 3) {
-          otaLogger.w(
-            'Ignoring short Arduino OTA notification '
-            '(type 0x${messageType.toRadixString(16)}, length ${value.length})',
-          );
-          return;
-        }
+            final double progress =
+                (segmentIndex / totalSegmentCount) * 100;
+            final int roundedProgress = progress.round();
+            otaLogger.d(
+              'Segment $segmentIndex/$totalSegmentCount — $roundedProgress%',
+            );
+            _emitPercentage(roundedProgress);
 
-        final int reportedSegmentIndex = (value[1] << 8) | value[2];
-        if (reportedSegmentIndex < 0 ||
-            reportedSegmentIndex >= totalSegmentCount) {
-          otaLogger.w(
-            'Ignoring out-of-range segment index $reportedSegmentIndex '
-            '(expected 0..${totalSegmentCount - 1})',
-          );
-          return;
-        }
-
-        final double progress =
-            (reportedSegmentIndex / totalSegmentCount) * 100;
-        final int roundedProgress = progress.round();
-        otaLogger.d(
-          'Segment $reportedSegmentIndex/$totalSegmentCount — $roundedProgress%',
-        );
-        _emitPercentage(roundedProgress);
-
-        if (messageType == 0xF1) {
-          otaLogger.d('Next segment requested: $reportedSegmentIndex');
-          await protocol.sendFirmwareSegment(
-            reportedSegmentIndex,
-            firmware,
-            mtuSize,
-          );
+            otaLogger.d('Next segment requested: $segmentIndex');
+            await protocol.sendFirmwareSegment(
+              segmentIndex,
+              firmware,
+              mtuSize,
+            );
+            return;
+          default:
+            if (value.length < 3) {
+              otaLogger.w(
+                'Ignoring unknown short Arduino OTA notification '
+                '(type 0x${messageType.toRadixString(16)}, length ${value.length})',
+              );
+              return;
+            }
+            _failArduinoOta(
+              'Unknown Arduino OTA opcode 0x${messageType.toRadixString(16)}',
+            );
         }
       } catch (e) {
         _handleUpdateError(e);
