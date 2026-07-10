@@ -108,9 +108,7 @@ class FirmwareLoader {
     return chunkFirmware(bytes, mtuSize);
   }
 
-  Future<Uint8List> loadRawFromPicker(int mtuSize) async {
-    otaLogger.d('Chunk size (MTU) in file picker (Arduino): $mtuSize');
-
+  Future<Uint8List> loadRawFromPicker() async {
     final Uint8List? bytes = await pickFirmwareBytes();
     if (bytes == null) {
       return Uint8List(0);

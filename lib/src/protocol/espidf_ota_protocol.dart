@@ -62,6 +62,13 @@ class EspIdfOtaProtocol {
         return false;
       }
 
+      if (chunk.length > mtuSize) {
+        otaLogger.e(
+          'OTA update failed: chunk size ${chunk.length} exceeds mtuSize $mtuSize',
+        );
+        return false;
+      }
+
       await _bleRepository.writeDataCharacteristic(_writeCharacteristic, chunk);
       chunkIndex++;
 

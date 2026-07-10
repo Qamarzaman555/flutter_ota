@@ -146,9 +146,7 @@ class Esp32OtaPackage implements OtaPackage {
 
     final Uint8List firmware = switch (firmwareType) {
       FirmwareType.assets => await _loadArduinoAssetFirmware(uri!),
-      FirmwareType.filepicker => await _firmwareLoader.loadRawFromPicker(
-        mtuSize,
-      ),
+      FirmwareType.filepicker => await _firmwareLoader.loadRawFromPicker(),
       FirmwareType.url => await _firmwareLoader.loadRawFromUrl(uri!),
     };
 
