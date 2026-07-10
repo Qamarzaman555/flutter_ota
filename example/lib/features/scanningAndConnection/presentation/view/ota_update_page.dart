@@ -237,7 +237,7 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
         FirmwareType.url,
         uri:
             'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
-        mtuSize: OtaBleConstants.arduinoMtuSize,
+        mtuSize: OtaBleConstants.espidfMtuSize,
       );
     } on OtaException catch (e) {
       debugPrint('OTA failed: $e');
