@@ -175,7 +175,7 @@ class Esp32OtaPackage implements OtaPackage {
 
       try {
         verboseTrace('Received notification value: $value');
-        final int reportedSegmentIndex = value[2];
+        final int reportedSegmentIndex = (value[1] << 8) | value[2];
         final double progress =
             (reportedSegmentIndex / totalSegmentCount) * 100;
         final int roundedProgress = progress.round();
@@ -185,12 +185,9 @@ class Esp32OtaPackage implements OtaPackage {
         _emitPercentage(roundedProgress);
 
         if (value[0] == 0xF1) {
-          final Uint8List bytes = Uint8List.fromList([value[1], value[2]]);
-          final ByteData byteData = ByteData.sublistView(bytes);
-          final int nextSegmentIndex = byteData.getUint16(0);
-          otaLogger.d('Next segment requested: $nextSegmentIndex');
+          otaLogger.d('Next segment requested: $reportedSegmentIndex');
           await protocol.sendFirmwareSegment(
-            nextSegmentIndex,
+            reportedSegmentIndex,
             firmware,
             mtuSize,
           );
