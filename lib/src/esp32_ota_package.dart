@@ -175,7 +175,43 @@ class Esp32OtaPackage implements OtaPackage {
 
       try {
         verboseTrace('Received notification value: $value');
+        if (value.isEmpty) {
+          otaLogger.w('Ignoring empty Arduino OTA notification');
+          return;
+        }
+
+        final int messageType = value[0];
+
+        if (messageType == 0x0F) {
+          otaLogger.i('OTA update complete');
+          _firmwareUpdateSucceeded = true;
+          _completeUpdate(100);
+          return;
+        }
+
+        if (messageType == 0xF2) {
+          otaLogger.i('New bin file installation begins on ESP32');
+          return;
+        }
+
+        if (value.length < 3) {
+          otaLogger.w(
+            'Ignoring short Arduino OTA notification '
+            '(type 0x${messageType.toRadixString(16)}, length ${value.length})',
+          );
+          return;
+        }
+
         final int reportedSegmentIndex = (value[1] << 8) | value[2];
+        if (reportedSegmentIndex < 0 ||
+            reportedSegmentIndex >= totalSegmentCount) {
+          otaLogger.w(
+            'Ignoring out-of-range segment index $reportedSegmentIndex '
+            '(expected 0..${totalSegmentCount - 1})',
+          );
+          return;
+        }
+
         final double progress =
             (reportedSegmentIndex / totalSegmentCount) * 100;
         final int roundedProgress = progress.round();
@@ -184,21 +220,13 @@ class Esp32OtaPackage implements OtaPackage {
         );
         _emitPercentage(roundedProgress);
 
-        if (value[0] == 0xF1) {
+        if (messageType == 0xF1) {
           otaLogger.d('Next segment requested: $reportedSegmentIndex');
           await protocol.sendFirmwareSegment(
             reportedSegmentIndex,
             firmware,
             mtuSize,
           );
-        }
-        if (value[0] == 0x0F) {
-          otaLogger.i('OTA update complete');
-          _firmwareUpdateSucceeded = true;
-          _completeUpdate(100);
-        }
-        if (value[0] == 0xF2) {
-          otaLogger.i('New bin file installation begins on ESP32');
         }
       } catch (e) {
         _handleUpdateError(e);

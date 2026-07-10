@@ -48,6 +48,10 @@ class EspIdfOtaProtocol {
     List<int> value = await _bleRepository
         .readCharacteristic(_notifyCharacteristic)
         .timeout(const Duration(seconds: 10));
+    if (value.isEmpty) {
+      otaLogger.e('OTA update failed: empty control characteristic read');
+      return false;
+    }
     otaLogger.d('Control characteristic returned: ${value[0]}');
 
     int chunkIndex = 0;
@@ -77,6 +81,10 @@ class EspIdfOtaProtocol {
     value = await _bleRepository
         .readCharacteristic(_notifyCharacteristic)
         .timeout(const Duration(seconds: 600));
+    if (value.isEmpty) {
+      otaLogger.e('OTA update failed: empty final control characteristic read');
+      return false;
+    }
     otaLogger.d('Control characteristic returned: ${value[0]}');
 
     if (value[0] == 5) {
