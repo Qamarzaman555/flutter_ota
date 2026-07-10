@@ -25,11 +25,28 @@ All notable changes to the `flutter_ota` package are documented in this file.
   Out-of-range values throw `OtaException` before any BLE writes, instead of
   failing mid-transfer with a GATT error.
 - Structured `logger`-based logging, replacing `print` statements.
+- README section on aligning `BluetoothDevice.requestMtu()` with the `mtuSize`
+  passed to `updateFirmware`, including per-protocol wire-size notes for
+  ESP-IDF and Arduino.
 
 ### Fixed
 - Arduino updates now use the caller-supplied `mtuSize`. Previously it was
   ignored in favour of the device-negotiated MTU and hardcoded values (`200`,
   `400`), so the requested chunk size never reached the device.
+- Arduino OTA progress for firmware with more than 255 segments: progress now
+  uses the full 16-bit segment index from device notifications instead of the
+  low byte only, which previously caused progress to wrap above ~4 MB.
+- Arduino notification handler no longer throws `RangeError` on empty or short
+  device notifications; `0x0F` (complete) and `0xF2` (install start) messages
+  are handled safely using only the opcode byte.
+- Short or invalid Arduino `0xF1` segment requests (truncated payload or
+  out-of-range segment index) now fail the OTA update instead of being silently
+  ignored, which could leave the transfer stuck without a terminal
+  `failedValue`.
+- Unknown Arduino opcodes no longer decode `value[1]`/`value[2]` as a segment
+  index or emit misleading progress.
+- ESP-IDF control-characteristic reads are guarded against empty responses
+  before indexing `value[0]`.
 
 ### Changed
 - Refactored the OTA API to use the `UpdateType` and `FirmwareType` enums in
@@ -38,6 +55,11 @@ All notable changes to the `flutter_ota` package are documented in this file.
   `String`s, and rethrow existing `OtaException`s without re-wrapping them.
 - Generalised the failure log message from "BLE error" to "OTA update aborted"
   to reflect that it now also covers validation failures.
+- Removed the unused `mtuSize` parameter from internal Arduino raw file-picker
+  loading; Arduino chunking still happens in `ArduinoOtaProtocol` during
+  transfer.
+- ESP-IDF transfer loop now validates that each pre-chunked payload is ≤
+  `mtuSize` before writing, catching internal chunk/handshake mismatches early.
 
 ### Removed
 - The unused `service` and UUID parameters from `updateFirmware`.

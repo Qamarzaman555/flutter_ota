@@ -155,21 +155,53 @@ await otaPackage.updateFirmware(
 | Parameter | Applies to |
 | --- | --- |
 | `uri` | Required for every `FirmwareType` except `FirmwareType.filepicker` |
-| `mtuSize` | Both update types (default `500`); the per-packet chunk size used during transfer |
+| `mtuSize` | Both update types (default `500`); see [Chunk size and BLE MTU](#chunk-size-mtusize-and-ble-mtu-negotiation) below |
 
-### Chunk size (`mtuSize`) limits
+### Chunk size (`mtuSize`) and BLE MTU negotiation
 
-`mtuSize` is the number of firmware bytes sent per BLE packet. A single BLE
-characteristic write cannot exceed 512 bytes (the maximum attribute length in
-the Bluetooth spec, also enforced by `flutter_blue_plus` on Android and iOS), so
-`mtuSize` is validated up front and must be:
+`mtuSize` is the number of **firmware payload bytes** per BLE transfer unit. It is
+**not** the same as the ATT MTU negotiated by
+`BluetoothDevice.requestMtu()` — the package does **not** call `requestMtu()`
+for you. Your app must negotiate BLE MTU before starting an update, and the
+`mtuSize` you pass to `updateFirmware` must fit within what was actually
+negotiated.
 
-* **`UpdateType.espidf`:** between `1` and `512`.
-* **`UpdateType.arduino`:** between `1` and `510`. The Arduino protocol prepends
-  a 2-byte header to every packet, so the largest usable payload is `512 - 2`.
+| Protocol | How `mtuSize` is used |
+| --- | --- |
+| **ESP-IDF** | Splits firmware into chunks at load time (assets, file picker, URL); sends the value to the device in the handshake MTU packet; each chunk written must be ≤ `mtuSize`. |
+| **Arduino** | Loads the full binary for file picker (chunk size is not used at load time); splits each 16 KB segment into `0xFB` BLE packets of `mtuSize` bytes during transfer; sends the value to the device in the `0xFF` handshake packet. |
 
-An out-of-range value throws an `OtaException` before any data is sent, so you
-get a clear error instead of a mid-transfer GATT failure.
+**Aligning `requestMtu()` with `mtuSize`:**
+
+* **ESP-IDF:** each characteristic write is one firmware chunk, so `mtuSize`
+  must be ≤ the negotiated ATT MTU (hard cap 512).
+* **Arduino:** each write is `mtuSize + 2` bytes on the wire (2-byte `0xFB`
+  header), so ensure `mtuSize + arduinoHeaderSize` (i.e. `mtuSize + 2`) fits
+  within the negotiated ATT MTU.
+
+```dart
+// Arduino example: request enough ATT MTU for payload + 2-byte header.
+await device.requestMtu(512);
+
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.arduino,
+  FirmwareType.filepicker,
+  mtuSize: 510, // 510 + 2 = 512 on the wire
+);
+```
+
+If `requestMtu()` and `mtuSize` are misaligned (for example, negotiating `500`
+but passing `mtuSize: 509` for Arduino), up-front validation may still pass
+while GATT writes fail at runtime.
+
+`mtuSize` is validated before any data is sent and must be:
+
+* **`UpdateType.espidf`:** between `1` and `512` (`maxMtuSize`).
+* **`UpdateType.arduino`:** between `1` and `510` (`maxMtuSize - arduinoHeaderSize`). The Arduino protocol prepends a 2-byte header to every
+  packet, so the largest usable payload is `512 - 2`.
+
+An out-of-range value throws an `OtaException` before any BLE writes begin.
 
 6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
 
