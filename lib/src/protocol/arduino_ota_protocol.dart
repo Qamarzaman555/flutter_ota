@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-
+import 'package:flutter_ota/src/core/ota_protocol.dart';
+import 'package:flutter_ota/src/core/ota_transport.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
 import 'package:flutter_ota/src/models/constants.dart';
-import 'package:flutter_ota/src/transport/ble_repository.dart';
 
 /// Arduino OTA transfer logic.
 ///
@@ -14,30 +14,175 @@ import 'package:flutter_ota/src/transport/ble_repository.dart';
 ///   next one.
 /// * **BLE packet** — one characteristic write within a segment (`mtuSize` bytes
 ///   of payload plus the 2-byte `0xFB` header).
-class ArduinoOtaProtocol {
-  ArduinoOtaProtocol({
-    required BleRepository bleRepository,
-    required BluetoothCharacteristic writeCharacteristic,
-    required bool Function() isCancelRequested,
-  }) : _bleRepository = bleRepository,
-       _writeCharacteristic = writeCharacteristic,
-       _isCancelRequested = isCancelRequested;
-
+class ArduinoOtaProtocol implements OtaProtocol {
   /// Bytes of firmware sent per device-acknowledged segment.
   static const int firmwareSegmentSize = 16000;
 
-  final BleRepository _bleRepository;
-  final BluetoothCharacteristic _writeCharacteristic;
-  final bool Function() _isCancelRequested;
+  StreamSubscription<Uint8List>? _subscription;
+  Completer<bool>? _updateCompleter;
+
+  @override
+  int get maxWriteSize => maxMtuSize - arduinoHeaderSize;
+
+  @override
+  Future<void> cancel() async {
+    await _subscription?.cancel();
+    _subscription = null;
+    final Completer<bool>? completer = _updateCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(false);
+    }
+    _updateCompleter = null;
+  }
+
+  @override
+  Future<bool> performUpdate({
+    required OtaTransport transport,
+    required Uint8List firmware,
+    required int mtuSize,
+    required bool Function() isCancelRequested,
+    required void Function(int percent) onProgress,
+  }) async {
+    otaLogger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
+    verboseTrace('Loaded firmware bytes: $firmware');
+    otaLogger.d('Firmware length: ${firmware.length} bytes');
+
+    final int firmwareByteLength = firmware.length;
+    final int totalSegmentCount =
+        (firmwareByteLength / firmwareSegmentSize).ceil();
+    otaLogger.d(
+      'Firmware length: $firmwareByteLength bytes, '
+      'segments: $totalSegmentCount',
+    );
+
+    _updateCompleter = Completer<bool>();
+
+    _subscription = transport.inbound.listen((value) async {
+      if (isCancelRequested()) {
+        otaLogger.w('OTA update cancelled while sending firmware');
+        _completeUpdate(false);
+        return;
+      }
+
+      try {
+        verboseTrace('Received notification value: $value');
+        if (value.isEmpty) {
+          otaLogger.w('Ignoring empty Arduino OTA notification');
+          return;
+        }
+
+        final int messageType = value[0];
+
+        switch (messageType) {
+          case 0x0F:
+            otaLogger.i('OTA update complete');
+            _completeUpdate(true);
+            return;
+          case 0xF2:
+            otaLogger.i('New bin file installation begins on ESP32');
+            return;
+          case 0xF1:
+            if (value.length < 3) {
+              _failUpdate(
+                'Short segment request (length ${value.length})',
+              );
+              return;
+            }
+
+            final int segmentIndex = (value[1] << 8) | value[2];
+            if (segmentIndex >= totalSegmentCount) {
+              _failUpdate(
+                'Out-of-range segment index $segmentIndex '
+                '(expected 0..${totalSegmentCount - 1})',
+              );
+              return;
+            }
+
+            final double progress = (segmentIndex / totalSegmentCount) * 100;
+            final int roundedProgress = progress.round();
+            otaLogger.d(
+              'Segment $segmentIndex/$totalSegmentCount — $roundedProgress%',
+            );
+            onProgress(roundedProgress);
+
+            otaLogger.d('Next segment requested: $segmentIndex');
+            await _sendFirmwareSegment(
+              transport,
+              segmentIndex,
+              firmware,
+              mtuSize,
+              isCancelRequested,
+            );
+            return;
+          default:
+            if (value.length < 3) {
+              otaLogger.w(
+                'Ignoring unknown short Arduino OTA notification '
+                '(type 0x${messageType.toRadixString(16)}, length ${value.length})',
+              );
+              return;
+            }
+            _failUpdate(
+              'Unknown Arduino OTA opcode 0x${messageType.toRadixString(16)}',
+            );
+        }
+      } catch (e) {
+        otaLogger.e('Arduino OTA failed', error: e);
+        _completeUpdate(false);
+      }
+    });
+
+    try {
+      await _sendHandshake(
+        transport,
+        firmwareByteLength: firmwareByteLength,
+        totalSegmentCount: totalSegmentCount,
+        mtuSize: mtuSize,
+      );
+
+      const int initialSegmentIndex = 0;
+      await _sendFirmwareSegment(
+        transport,
+        initialSegmentIndex,
+        firmware,
+        mtuSize,
+        isCancelRequested,
+      );
+      onProgress(0);
+      otaLogger.d(
+        'Started segment $initialSegmentIndex/$totalSegmentCount — 0%',
+      );
+
+      return await _updateCompleter!.future;
+    } finally {
+      await _subscription?.cancel();
+      _subscription = null;
+      _updateCompleter = null;
+    }
+  }
+
+  void _completeUpdate(bool succeeded) {
+    final Completer<bool>? completer = _updateCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(succeeded);
+    }
+  }
+
+  void _failUpdate(String reason, [Object? cause]) {
+    otaLogger.e('Arduino OTA failed: $reason', error: cause);
+    _completeUpdate(false);
+  }
 
   /// Sends one firmware segment as a sequence of BLE packets, then the `0xFC`
   /// segment-complete marker.
-  Future<void> sendFirmwareSegment(
+  Future<void> _sendFirmwareSegment(
+    OtaTransport transport,
     int segmentIndex,
     Uint8List firmware,
     int mtuSize,
+    bool Function() isCancelRequested,
   ) async {
-    if (_isCancelRequested()) {
+    if (isCancelRequested()) {
       otaLogger.w('sendFirmwareSegment aborted due to cancellation');
       return;
     }
@@ -75,10 +220,7 @@ class ArduinoOtaProtocol {
         'Writing BLE packet, payload length is ${packet.length} '
         '— overall $overallProgress%',
       );
-      await _bleRepository.writeDataCharacteristic(
-        _writeCharacteristic,
-        packet,
-      );
+      await transport.writeData(packet);
     }
 
     final int remainderBytes = segmentLength % mtuSize;
@@ -91,10 +233,7 @@ class ArduinoOtaProtocol {
       packet.setRange(2, 2 + remainderBytes, firmware, payloadStart);
 
       verboseTrace('Writing remainder BLE packet payload');
-      await _bleRepository.writeDataCharacteristic(
-        _writeCharacteristic,
-        packet,
-      );
+      await transport.writeData(packet);
     }
 
     final Uint8List segmentCompleteMarker = Uint8List.fromList([
@@ -105,24 +244,19 @@ class ArduinoOtaProtocol {
       (segmentIndex % 256),
     ]);
 
-    await _bleRepository.writeDataCharacteristic(
-      _writeCharacteristic,
-      segmentCompleteMarker,
-    );
+    await transport.writeData(segmentCompleteMarker);
     verboseTrace('Sent segment-complete marker: $segmentCompleteMarker');
   }
 
   /// Sends the Arduino OTA handshake (`0xFD`, file size, OTA info).
-  Future<void> sendHandshake({
+  Future<void> _sendHandshake(
+    OtaTransport transport, {
     required int firmwareByteLength,
     required int totalSegmentCount,
     required int mtuSize,
   }) async {
     final Uint8List startCommand = Uint8List(1)..[0] = 0xFD;
-    await _bleRepository.writeDataCharacteristic(
-      _writeCharacteristic,
-      startCommand,
-    );
+    await transport.writeData(startCommand);
 
     final Uint8List fileSizePacket = Uint8List(5)
       ..[0] = 0xFE
@@ -131,10 +265,7 @@ class ArduinoOtaProtocol {
       ..[3] = (firmwareByteLength >> 8) & 0xFF
       ..[4] = firmwareByteLength & 0xFF;
     verboseDebug('Sending file size packet: $fileSizePacket');
-    await _bleRepository.writeDataCharacteristic(
-      _writeCharacteristic,
-      fileSizePacket,
-    );
+    await transport.writeData(fileSizePacket);
 
     final Uint8List otaInfoPacket = Uint8List(5)
       ..[0] = 0xFF
@@ -143,9 +274,6 @@ class ArduinoOtaProtocol {
       ..[3] = mtuSize ~/ 256
       ..[4] = mtuSize % 256;
     verboseDebug('Sending OTA info packet: $otaInfoPacket');
-    await _bleRepository.writeDataCharacteristic(
-      _writeCharacteristic,
-      otaInfoPacket,
-    );
+    await transport.writeData(otaInfoPacket);
   }
 }
