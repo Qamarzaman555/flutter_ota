@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_ota/src/core/firmware_chunker.dart';
 import 'package:flutter_ota/src/core/ota_protocol.dart';
 import 'package:flutter_ota/src/core/ota_transport.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
@@ -193,7 +194,11 @@ class ArduinoOtaProtocol implements OtaProtocol {
       segmentEnd = firmware.length;
     }
     final int segmentLength = segmentEnd - segmentStart;
-    final int blePacketCount = segmentLength ~/ mtuSize;
+    final Uint8List segment = Uint8List.sublistView(
+      firmware,
+      segmentStart,
+      segmentEnd,
+    );
 
     final int totalSegmentCount = (firmware.length / firmwareSegmentSize)
         .ceil();
@@ -201,39 +206,27 @@ class ArduinoOtaProtocol implements OtaProtocol {
         ? 0
         : (((segmentIndex + 1) / totalSegmentCount) * 100).round();
     otaLogger.d(
-      'Segment $segmentIndex: $blePacketCount full BLE packets '
-      '— overall $overallProgress%',
+      'Segment $segmentIndex: ${chunkCount(segmentLength, mtuSize)} BLE '
+      'packets — overall $overallProgress%',
     );
 
-    for (int packetIndex = 0; packetIndex < blePacketCount; packetIndex++) {
+    int packetIndex = 0;
+    for (final Uint8List payload in chunkFirmware(segment, mtuSize)) {
       verboseTrace(
-        'BLE packet $packetIndex/$blePacketCount in segment $segmentIndex '
+        'BLE packet $packetIndex in segment $segmentIndex '
         '— overall $overallProgress%',
       );
-      final Uint8List packet = Uint8List(mtuSize + arduinoHeaderSize);
+      final Uint8List packet = Uint8List(payload.length + arduinoHeaderSize);
       packet[0] = 0xFB;
       packet[1] = packetIndex;
-      final int payloadStart = segmentStart + (mtuSize * packetIndex);
-      packet.setRange(2, 2 + mtuSize, firmware, payloadStart);
+      packet.setRange(arduinoHeaderSize, packet.length, payload);
 
       verboseTrace(
         'Writing BLE packet, payload length is ${packet.length} '
         '— overall $overallProgress%',
       );
       await transport.writeData(packet);
-    }
-
-    final int remainderBytes = segmentLength % mtuSize;
-    if (remainderBytes != 0) {
-      verboseTrace('Writing remainder BLE packet for segment $segmentIndex');
-      final Uint8List packet = Uint8List(remainderBytes + arduinoHeaderSize);
-      packet[0] = 0xFB;
-      packet[1] = blePacketCount;
-      final int payloadStart = segmentStart + (mtuSize * blePacketCount);
-      packet.setRange(2, 2 + remainderBytes, firmware, payloadStart);
-
-      verboseTrace('Writing remainder BLE packet payload');
-      await transport.writeData(packet);
+      packetIndex++;
     }
 
     final Uint8List segmentCompleteMarker = Uint8List.fromList([

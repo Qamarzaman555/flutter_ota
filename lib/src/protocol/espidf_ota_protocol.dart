@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter_ota/src/core/firmware_chunker.dart';
 import 'package:flutter_ota/src/core/ota_protocol.dart';
 import 'package:flutter_ota/src/core/ota_transport.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
@@ -25,7 +26,7 @@ class EspIdfOtaProtocol implements OtaProtocol {
   }) async {
     otaLogger.i('Starting ESP-IDF OTA — chunk size (MTU): $mtuSize');
 
-    final List<Uint8List> binaryChunks = _chunkFirmware(firmware, mtuSize);
+    final int totalChunks = chunkCount(firmware.length, mtuSize);
 
     final Uint8List mtuPacket = Uint8List(2)
       ..[0] = mtuSize & 0xFF
@@ -44,27 +45,20 @@ class EspIdfOtaProtocol implements OtaProtocol {
     otaLogger.d('Control characteristic returned: ${value[0]}');
 
     int chunkIndex = 0;
-    otaLogger.i('Sending ${binaryChunks.length} firmware chunks');
-    for (final Uint8List chunk in binaryChunks) {
+    otaLogger.i('Sending $totalChunks firmware chunks');
+    for (final Uint8List chunk in chunkFirmware(firmware, mtuSize)) {
       if (isCancelRequested()) {
         otaLogger.w('OTA update cancelled while sending firmware');
-        return false;
-      }
-
-      if (chunk.length > mtuSize) {
-        otaLogger.e(
-          'OTA update failed: chunk size ${chunk.length} exceeds mtuSize $mtuSize',
-        );
         return false;
       }
 
       await transport.writeData(chunk);
       chunkIndex++;
 
-      final double progress = (chunkIndex / binaryChunks.length) * 100;
+      final double progress = (chunkIndex / totalChunks) * 100;
       final int roundedProgress = progress.round();
       otaLogger.d(
-        'Writing chunk $chunkIndex/${binaryChunks.length} — $roundedProgress%',
+        'Writing chunk $chunkIndex/$totalChunks — $roundedProgress%',
       );
       onProgress(roundedProgress);
     }
@@ -87,17 +81,5 @@ class EspIdfOtaProtocol implements OtaProtocol {
 
     otaLogger.e('OTA update failed (unexpected status ${value[0]})');
     return false;
-  }
-
-  /// Splits [bytes] into fixed-size chunks for ESP-IDF BLE transfer.
-  List<Uint8List> _chunkFirmware(List<int> bytes, int chunkSize) {
-    final List<Uint8List> chunks = [];
-    for (int i = 0; i < bytes.length; i += chunkSize) {
-      final int end = i + chunkSize < bytes.length
-          ? i + chunkSize
-          : bytes.length;
-      chunks.add(Uint8List.fromList(bytes.sublist(i, end)));
-    }
-    return chunks;
   }
 }
