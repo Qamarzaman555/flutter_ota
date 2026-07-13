@@ -216,16 +216,16 @@
     <section class="sticky-summary">
       <div class="summary-grid">
         <div class="card">
-          <div class="metric-value">68/100</div>
+          <div class="metric-value">72/100</div>
           <div class="metric-label">Overall Score</div>
-          <div class="progress" aria-label="Overall score"><div class="bar" style="--score:68%"></div></div>
+          <div class="progress" aria-label="Overall score"><div class="bar" style="--score:72%"></div></div>
         </div>
         <div class="card">
-          <div class="metric-value">9</div>
+          <div class="metric-value">10</div>
           <div class="metric-label">Passed Requirements</div>
         </div>
         <div class="card">
-          <div class="metric-value">3</div>
+          <div class="metric-value">2</div>
           <div class="metric-label">Warnings</div>
         </div>
         <div class="card">
@@ -248,8 +248,9 @@
       </p>
       <p>
         The implementation is not production-ready yet. Two required items remain failed: the package/example tests still fail,
-        and <code>Esp32OtaPackage.updateFirmware</code> still does not reject concurrent calls at package level. There are also
-        review risks around forced verbose firmware logging and a hardcoded Firebase firmware URL in the example OTA flow.
+        and <code>Esp32OtaPackage.updateFirmware</code> still does not reject concurrent calls at package level. CQ-5 is now
+        resolved through shared lazy firmware chunking and reused BLE repository wiring. There are still review risks around
+        forced verbose firmware logging and a hardcoded Firebase firmware URL in the example OTA flow.
       </p>
       <p>
         Verification summary: <code>flutter analyze</code> passes. <code>dart format --output=none --set-exit-if-changed .</code>
@@ -299,8 +300,8 @@
             <tr>
               <td>CQ-5</td>
               <td>Reduce duplicated chunking logic and repeated <code>BleRepository</code> instantiation.</td>
-              <td><span class="badge warning">&#9888; Partially Implemented</span></td>
-              <td>Firmware loaders are unified, and <code>BleRepository</code> is injectable in <code>BleOtaTransport</code>. Some protocol-specific chunk/list allocation remains in <code>EspIdfOtaProtocol._chunkFirmware</code>.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Resolved. Shared lazy chunking now lives in <code>lib/src/core/firmware_chunker.dart</code>, ESP-IDF and Arduino both use <code>chunkFirmware</code>/<code>chunkCount</code>, and <code>BleRepository</code> is injected once into <code>BleOtaTransport</code> instead of being recreated per operation.</td>
             </tr>
             <tr>
               <td>CQ-6</td>
@@ -623,7 +624,7 @@
           <tbody>
             <tr>
               <th>Were all first-three-section requirements implemented correctly?</th>
-              <td>No. 9 passed, 3 partial, 2 failed among the 14 unique scoped requirements.</td>
+              <td>No. 10 passed, 2 partial, 2 failed among the 14 unique scoped requirements.</td>
             </tr>
             <tr>
               <th>Is anything missing?</th>
