@@ -66,6 +66,13 @@ class Esp32OtaPackage implements OtaPackage {
     String? uri,
     int mtuSize = 500,
   }) async {
+    if (isUpdating) {
+      throw OtaException(
+        'An OTA update is already in progress. Wait for it to finish or call '
+        'cancelUpdate() before starting another.',
+      );
+    }
+
     if (firmwareType != FirmwareType.filepicker &&
         (uri == null || uri.isEmpty)) {
       throw OtaException('uri is required for the specified firmware type.');
