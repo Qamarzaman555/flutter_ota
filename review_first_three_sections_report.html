@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flutter OTA Review - First Three Sections</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #18202f;
+      --muted: #667085;
+      --line: #e5e7eb;
+      --green: #15803d;
+      --green-bg: #dcfce7;
+      --yellow: #a16207;
+      --yellow-bg: #fef3c7;
+      --red: #b91c1c;
+      --red-bg: #fee2e2;
+      --blue: #1d4ed8;
+      --blue-bg: #dbeafe;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    header {
+      padding: 32px 20px 16px;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    h1, h2, h3 { margin: 0 0 12px; line-height: 1.2; }
+    h1 { font-size: clamp(28px, 4vw, 42px); }
+    h2 { font-size: 22px; }
+    h3 { font-size: 18px; }
+    p { margin: 0 0 12px; }
+    code { background: #f2f4f7; padding: 2px 5px; border-radius: 5px; }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 20px 48px;
+    }
+
+    .subtitle { color: var(--muted); max-width: 900px; }
+
+    .sticky-summary {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(245, 247, 251, 0.94);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 0;
+      margin-bottom: 20px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card, details {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .card { padding: 18px; }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .bar {
+      height: 100%;
+      background: linear-gradient(90deg, #ef4444, #f59e0b 48%, #16a34a);
+      width: var(--score);
+    }
+
+    .section {
+      margin: 18px 0;
+    }
+
+    details {
+      margin: 16px 0;
+      overflow: hidden;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 18px;
+      font-weight: 750;
+      font-size: 18px;
+      border-bottom: 1px solid transparent;
+    }
+
+    details[open] summary {
+      border-bottom-color: var(--line);
+    }
+
+    .details-body {
+      padding: 18px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .passed { color: var(--green); background: var(--green-bg); }
+    .warning { color: var(--yellow); background: var(--yellow-bg); }
+    .failed { color: var(--red); background: var(--red-bg); }
+    .info { color: var(--blue); background: var(--blue-bg); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f9fafb;
+      color: #344054;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .finding {
+      border-left: 4px solid var(--line);
+      padding: 12px 14px;
+      margin: 12px 0;
+      background: #fbfcfe;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .finding.high { border-left-color: var(--red); }
+    .finding.medium { border-left-color: var(--yellow); }
+    .finding.low { border-left-color: var(--blue); }
+    .finding.suggestion { border-left-color: #64748b; }
+
+    .small { color: var(--muted); font-size: 14px; }
+    .nowrap { white-space: nowrap; }
+    ul { margin-top: 8px; padding-left: 20px; }
+
+    @media (max-width: 900px) {
+      .summary-grid, .two-col { grid-template-columns: 1fr; }
+      .sticky-summary { position: static; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Flutter OTA Deep Code Review</h1>
+    <p class="subtitle">
+      Scope: implementation of the first three improvement-document sections only:
+      Code Quality, Bug Hunting, and Overall Architecture. Generated on July 13, 2026.
+    </p>
+  </header>
+
+  <main>
+    <section class="sticky-summary">
+      <div class="summary-grid">
+        <div class="card">
+          <div class="metric-value">68/100</div>
+          <div class="metric-label">Overall Score</div>
+          <div class="progress" aria-label="Overall score"><div class="bar" style="--score:68%"></div></div>
+        </div>
+        <div class="card">
+          <div class="metric-value">9</div>
+          <div class="metric-label">Passed Requirements</div>
+        </div>
+        <div class="card">
+          <div class="metric-value">3</div>
+          <div class="metric-label">Warnings</div>
+        </div>
+        <div class="card">
+          <div class="metric-value">2</div>
+          <div class="metric-label">Failures</div>
+        </div>
+        <div class="card">
+          <div class="metric-value"><span class="badge failed">Not Merge Ready</span></div>
+          <div class="metric-label">Recommendation</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section card">
+      <h2>Executive Summary</h2>
+      <p>
+        The architecture work is the strongest part of this implementation: the old monolithic shape has been split into
+        transport, protocol, firmware-source, and orchestration layers, which is a meaningful improvement for maintainability
+        and future extensibility.
+      </p>
+      <p>
+        The implementation is not production-ready yet. Two required items remain failed: the package/example tests still fail,
+        and <code>Esp32OtaPackage.updateFirmware</code> still does not reject concurrent calls at package level. There are also
+        review risks around forced verbose firmware logging and a hardcoded Firebase firmware URL in the example OTA flow.
+      </p>
+      <p>
+        Verification summary: <code>flutter analyze</code> passes. <code>dart format --output=none --set-exit-if-changed .</code>
+        reports formatting changes. <code>flutter test</code> fails because <code>test/ota_package_test.dart</code> has no
+        <code>main()</code>. The example tests fail because the stock counter test does not match the app and GetX dependency
+        setup is missing.
+      </p>
+    </section>
+
+    <details open>
+      <summary>1. Requirements Verification Table</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Requirement</th>
+              <th>Status</th>
+              <th>Evidence and Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CQ-1</td>
+              <td>Await kickoff <code>sendPart(0,...)</code> and handle first BLE write failure.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Initial Arduino segment send is awaited in <code>lib/src/protocol/arduino_ota_protocol.dart:144</code>. Write failures propagate to <code>OtaClient.run</code>, which emits failure.</td>
+            </tr>
+            <tr>
+              <td>CQ-2</td>
+              <td>Run formatter and add CI format/analyzer gate.</td>
+              <td><span class="badge warning">&#9888; Partially Implemented</span></td>
+              <td><code>flutter analyze</code> passes, but format check reports changes and no CI workflow exists under <code>.github</code>.</td>
+            </tr>
+            <tr>
+              <td>CQ-3 / BUG-5</td>
+              <td>Throw <code>OtaException</code> for missing URI instead of a raw string.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td><code>Esp32OtaPackage.updateFirmware</code> throws <code>OtaException</code> at <code>lib/src/esp32_ota_package.dart:69</code>.</td>
+            </tr>
+            <tr>
+              <td>CQ-4</td>
+              <td>Encapsulate public mutable internal state.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Internal client, subscription, and state flags are private. Public state is exposed through read-only getters and streams.</td>
+            </tr>
+            <tr>
+              <td>CQ-5</td>
+              <td>Reduce duplicated chunking logic and repeated <code>BleRepository</code> instantiation.</td>
+              <td><span class="badge warning">&#9888; Partially Implemented</span></td>
+              <td>Firmware loaders are unified, and <code>BleRepository</code> is injectable in <code>BleOtaTransport</code>. Some protocol-specific chunk/list allocation remains in <code>EspIdfOtaProtocol._chunkFirmware</code>.</td>
+            </tr>
+            <tr>
+              <td>CQ-6</td>
+              <td>Replace byte-by-byte packet copying with bulk operations.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Arduino packet assembly uses <code>setRange</code> at <code>lib/src/protocol/arduino_ota_protocol.dart:217</code> and <code>:233</code>.</td>
+            </tr>
+            <tr>
+              <td>CQ-7</td>
+              <td>Gate full-firmware and packet trace logging behind a debug flag.</td>
+              <td><span class="badge warning">&#9888; Partially Implemented</span></td>
+              <td>The package adds <code>otaVerboseLogging</code>, default false. However, the example sets it to true before OTA at <code>example/.../ota_update_page.dart:233</code>, enabling full firmware byte logging from <code>ArduinoOtaProtocol</code>.</td>
+            </tr>
+            <tr>
+              <td>CQ-8</td>
+              <td>Clean stale comments and confusing part/fileParts naming.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Protocol naming is clearer with segment/packet terminology. Remaining comments are generally useful.</td>
+            </tr>
+            <tr>
+              <td>BUG-1</td>
+              <td>Fix Arduino <code>0xFD</code> start-byte write buffer bug.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Start command is correctly initialized with <code>Uint8List(1)..[0] = 0xFD</code> at <code>lib/src/protocol/arduino_ota_protocol.dart:258</code>.</td>
+            </tr>
+            <tr>
+              <td>BUG-2</td>
+              <td>Fix broken/failing package and example tests.</td>
+              <td><span class="badge failed">&#10007; Missing</span></td>
+              <td><code>test/ota_package_test.dart</code> is empty and package tests fail with undefined <code>main</code>. Example test remains the stock counter test and fails.</td>
+            </tr>
+            <tr>
+              <td>BUG-3</td>
+              <td>Fix Arduino progress overflow for firmware larger than 255 parts. Duplicate of OTA-3.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Segment index is decoded as 16-bit at <code>lib/src/protocol/arduino_ota_protocol.dart:92</code> and used for progress at <code>:101</code>.</td>
+            </tr>
+            <tr>
+              <td>BUG-4</td>
+              <td>Add re-entrancy guard to <code>updateFirmware</code>.</td>
+              <td><span class="badge failed">&#10007; Missing</span></td>
+              <td><code>Esp32OtaPackage.updateFirmware</code> does not check <code>isUpdating</code> at entry. A second call can replace <code>_activeClient</code> and cancel progress forwarding while the first transfer still writes.</td>
+            </tr>
+            <tr>
+              <td>BUG-6 / BUG-7</td>
+              <td>Duplicate bug items: un-awaited kickoff and short notification guards.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Kickoff send is awaited. Arduino guards empty and short notifications; ESP-IDF guards empty control reads before indexing.</td>
+            </tr>
+            <tr>
+              <td>A-1</td>
+              <td>Design <code>OtaTransport</code>, <code>OtaProtocol</code>, and <code>FirmwareSource</code> abstractions.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Interfaces exist in <code>lib/src/core</code>, with BLE, Arduino, ESP-IDF, asset, picker, and URL implementations.</td>
+            </tr>
+            <tr>
+              <td>A-2</td>
+              <td>Split monolithic library into <code>lib/src</code> and curated barrel export.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>The package now exposes <code>lib/flutter_ota.dart</code>; <code>lib/ota_package.dart</code> is a compatibility export shim.</td>
+            </tr>
+            <tr>
+              <td>A-3</td>
+              <td>Remove duplicated firmware-source loaders.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>All firmware sources implement <code>FirmwareSource.load()</code> and return raw <code>Uint8List</code> bytes.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details open>
+      <summary>2. Architecture Review</summary>
+      <div class="details-body">
+        <div class="two-col">
+          <div class="card">
+            <h3>Strengths</h3>
+            <ul>
+              <li>Clean separation between orchestration, transport, protocol, and firmware loading.</li>
+              <li>Dependency direction is mostly correct: protocol code depends on abstractions, not Flutter Blue directly.</li>
+              <li>The public facade preserves backward compatibility while the internals move into <code>lib/src</code>.</li>
+              <li>BLE repository injection exists at the transport layer, which improves testability.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Concerns</h3>
+            <ul>
+              <li>The package-level facade still creates concrete protocol and transport instances internally, limiting full dependency injection for consumers.</li>
+              <li>The public barrel exports internal protocol and transport classes directly; that may be intentional, but it broadens the public API surface.</li>
+              <li><code>OtaTransport</code> requires both request/response and stream operations, which may be awkward for future HTTP, MQTT, or serial transports.</li>
+              <li>The example app mixes OTA orchestration, navigation, hardcoded firmware source, logging policy, and UI in one widget.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>3. Code Quality Review</summary>
+      <div class="details-body">
+        <div class="finding high">
+          <h3>High: Package-level re-entrancy is still missing</h3>
+          <p>
+            <strong>Why:</strong> <code>Esp32OtaPackage.updateFirmware</code> creates a new <code>OtaClient</code> without rejecting
+            calls while another update is active. The example has a local UI guard, but the package API remains unsafe.
+          </p>
+          <p><strong>Impact:</strong> Concurrent calls can interleave BLE writes, drop progress events, and corrupt the OTA session.</p>
+          <p><strong>Fix:</strong> Add an entry guard such as <code>if (isUpdating) throw OtaException(...)</code> before creating a new client, and cover it with a unit test.</p>
+        </div>
+        <div class="finding medium">
+          <h3>Medium: Forced verbose logging contradicts the logging cleanup</h3>
+          <p>
+            <strong>Why:</strong> <code>otaVerboseLogging = true</code> is set in the example OTA flow, which enables full firmware byte
+            and packet logging.
+          </p>
+          <p><strong>Impact:</strong> Large log output can slow transfers, expose binary contents, and make production troubleshooting noisy.</p>
+          <p><strong>Fix:</strong> Keep verbose logging opt-in through debug-only configuration, not hardcoded in the update path.</p>
+        </div>
+        <div class="finding medium">
+          <h3>Medium: Hardcoded Firebase firmware URL in the example flow</h3>
+          <p>
+            <strong>Why:</strong> The Start OTA button now always downloads a specific Firebase token URL at
+            <code>example/.../ota_update_page.dart:237</code>.
+          </p>
+          <p><strong>Impact:</strong> Token expiry, network delay, wrong firmware, or Firebase policy changes can break the demo and OTA flow.</p>
+          <p><strong>Fix:</strong> Move the URL into configuration or sample input and validate firmware identity before flashing.</p>
+        </div>
+        <div class="finding low">
+          <h3>Low: Formatter gate is not clean</h3>
+          <p>
+            <strong>Why:</strong> The format check reports changes for three files. Analyzer passes, but the requested formatter/CI gate is not complete.
+          </p>
+          <p><strong>Fix:</strong> Run <code>dart format .</code> and add CI steps for <code>dart format --set-exit-if-changed</code>, <code>flutter analyze</code>, and tests.</p>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>4. Bug Review</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Severity</th>
+              <th>Evidence</th>
+              <th>Recommended Fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Broken test suite</td>
+              <td><span class="badge failed">Critical</span></td>
+              <td>Package test file is empty; example test is the stock counter test and fails with missing <code>HomePageController</code>.</td>
+              <td>Add real unit tests for protocol/state behavior and replace the example test with an app-specific smoke test or remove it.</td>
+            </tr>
+            <tr>
+              <td>Concurrent OTA calls</td>
+              <td><span class="badge failed">High</span></td>
+              <td>No guard at <code>lib/src/esp32_ota_package.dart:68</code>; old and new clients can overlap.</td>
+              <td>Reject concurrent calls at the package API boundary.</td>
+            </tr>
+            <tr>
+              <td>Premature terminal progress for ESP-IDF</td>
+              <td><span class="badge warning">High</span></td>
+              <td>ESP-IDF emits 100% after bytes are sent at <code>lib/src/protocol/espidf_ota_protocol.dart:64</code>, while final commit acknowledgement happens later. The public stream closes on any 100 at <code>lib/src/esp32_ota_package.dart:104</code>.</td>
+              <td>Reserve 100 for confirmed completion, or emit structured phase events instead of sentinel integers.</td>
+            </tr>
+            <tr>
+              <td>File picker null path</td>
+              <td><span class="badge warning">Medium</span></td>
+              <td><code>FilePickerFirmwareSource</code> force unwraps <code>file.path!</code>, which can be null on some platforms or picker modes.</td>
+              <td>Use <code>withData</code> fallback or throw a typed <code>OtaException</code> when no file path/bytes are available.</td>
+            </tr>
+            <tr>
+              <td>URL firmware timeout sensitivity</td>
+              <td><span class="badge warning">Medium</span></td>
+              <td><code>UrlFirmwareSource</code> has a fixed 10-second full download timeout. The example now depends on network/Firebase before BLE transfer starts.</td>
+              <td>Make timeout configurable, stream downloads, and give the UI a download phase/error.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details>
+      <summary>5. Regression Analysis</summary>
+      <div class="details-body">
+        <ul>
+          <li><strong>Existing example behavior:</strong> switching from file picker to hardcoded URL removes user choice and breaks offline OTA demos.</li>
+          <li><strong>OTA flow:</strong> URL download failures now block Arduino OTA before any BLE write; the UI sees only a generic failure path unless the stream dialog is active.</li>
+          <li><strong>BLE communication:</strong> concurrent calls can still corrupt GATT writes because the package API does not enforce single-flight operation.</li>
+          <li><strong>Error handling:</strong> terminal progress still relies on magic integer sentinels; consumers can misinterpret 100 as final commit in ESP-IDF.</li>
+          <li><strong>Testing safety net:</strong> both package and example tests fail, so regressions are not being caught automatically.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>6. Performance Analysis</summary>
+      <div class="details-body">
+        <ul>
+          <li><strong>Improved:</strong> Arduino packet creation now uses bulk copying instead of byte-by-byte loops.</li>
+          <li><strong>Improved:</strong> verbose payload logging is gated by default at package level.</li>
+          <li><strong>Concern:</strong> the example enables verbose logging, which can degrade CPU, memory, and log throughput during large transfers.</li>
+          <li><strong>Concern:</strong> URL and asset firmware sources load the full binary into memory. ESP-IDF additionally chunks into a list, increasing peak memory use.</li>
+          <li><strong>Concern:</strong> synchronous awaited BLE writes are safe but may limit throughput; any pipelining should be protocol/device-specific.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>7. Flutter Best Practices</summary>
+      <div class="details-body">
+        <ul>
+          <li>The example page correctly cancels its connection subscription in <code>dispose</code>.</li>
+          <li>The local UI guard prevents double taps, but package-level state management must not rely on one widget implementation.</li>
+          <li>The widget owns too many responsibilities: characteristic discovery, MTU preparation, logging policy, firmware source selection, navigation, and dialog lifecycle.</li>
+          <li>Const usage is generally reasonable in the reviewed widget tree.</li>
+          <li>Hardcoded production URL and global logging mutation inside a widget are not ideal Flutter app architecture.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details open>
+      <summary>8. Risk Matrix</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Finding</th>
+              <th>Severity</th>
+              <th>Impact</th>
+              <th>Merge Blocker</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>BUG-2 package/example tests still fail</td>
+              <td><span class="badge failed">Critical</span></td>
+              <td>No reliable regression safety net; one required bug ticket is unresolved.</td>
+              <td>Yes</td>
+            </tr>
+            <tr>
+              <td>BUG-4 package re-entrancy guard missing</td>
+              <td><span class="badge failed">High</span></td>
+              <td>Concurrent OTA sessions can interleave writes and corrupt device state.</td>
+              <td>Yes</td>
+            </tr>
+            <tr>
+              <td>ESP-IDF 100% emitted before device commit</td>
+              <td><span class="badge warning">High</span></td>
+              <td>UI/consumers may show success before the device confirms commit.</td>
+              <td>Yes, if ESP-IDF path is in release scope</td>
+            </tr>
+            <tr>
+              <td>Hardcoded Firebase firmware URL</td>
+              <td><span class="badge warning">Medium</span></td>
+              <td>Demo becomes network-dependent and can flash the wrong/stale firmware.</td>
+              <td>No, but should be fixed before production demo</td>
+            </tr>
+            <tr>
+              <td>Forced verbose payload logging</td>
+              <td><span class="badge warning">Medium</span></td>
+              <td>Performance/log exposure risk during OTA.</td>
+              <td>No, but should be fixed before production</td>
+            </tr>
+            <tr>
+              <td>Formatter/CI gate incomplete</td>
+              <td><span class="badge info">Low</span></td>
+              <td>Style regressions can slip in.</td>
+              <td>No</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details>
+      <summary>9. Missing Items</summary>
+      <div class="details-body">
+        <ul>
+          <li>BUG-2: Real package tests and corrected example tests.</li>
+          <li>BUG-4: Re-entrancy guard inside <code>Esp32OtaPackage.updateFirmware</code>.</li>
+          <li>CQ-2: Clean format check plus CI format/analyzer/test workflow.</li>
+          <li>CQ-7 polish: Do not enable verbose full-firmware logging from the example by default.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>10. Suggested Improvements</summary>
+      <div class="details-body">
+        <ul>
+          <li>Add mocked <code>OtaTransport</code> tests for success, failure, cancellation, short notifications, invalid segment indexes, and concurrent call rejection.</li>
+          <li>Move example firmware selection into configuration or UI input; do not hardcode a Firebase token URL in the Start OTA path.</li>
+          <li>Use a structured progress/event model in a future pass so progress, completion, cancellation, and failure are not overloaded into integers.</li>
+          <li>Consider a public constructor or builder that accepts injected protocol, transport, and source for app-level testability.</li>
+          <li>Keep <code>lib/ota_package.dart</code> as a deprecation/compatibility shim for one release if existing consumers import it.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details open>
+      <summary>11. Merge Recommendation</summary>
+      <div class="details-body">
+        <p><span class="badge failed">Do Not Merge Yet</span></p>
+        <p>
+          The architecture direction is good, and most section-three work appears correctly implemented. However, the requested bug-fix section is incomplete
+          because tests are still broken and package-level concurrent update protection is missing. These should be fixed before production merge.
+        </p>
+      </div>
+    </details>
+
+    <details open>
+      <summary>12. Final Verdict</summary>
+      <div class="details-body">
+        <table>
+          <tbody>
+            <tr>
+              <th>Were all first-three-section requirements implemented correctly?</th>
+              <td>No. 9 passed, 3 partial, 2 failed among the 14 unique scoped requirements.</td>
+            </tr>
+            <tr>
+              <th>Is anything missing?</th>
+              <td>Yes: required test fixes, re-entrancy guard, CI gate, and default-safe logging behavior.</td>
+            </tr>
+            <tr>
+              <th>Did any fix introduce new bugs?</th>
+              <td>The hardcoded URL and forced verbose logging in the example introduce production/demo risk. ESP-IDF progress can still report completion too early.</td>
+            </tr>
+            <tr>
+              <th>Is the code safe to merge?</th>
+              <td>No. It requires additional work before production merge.</td>
+            </tr>
+            <tr>
+              <th>What should be fixed before merging?</th>
+              <td>Fix tests, add package re-entrancy guard, remove forced verbose logging, and avoid hardcoded firmware URL in production-facing flows.</td>
+            </tr>
+            <tr>
+              <th>Confidence</th>
+              <td>88%. The review is based on the referenced document, local code inspection, analyzer/test execution, and direct line-level tracing. Hardware BLE behavior was not physically tested.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </main>
+</body>
+</html>
