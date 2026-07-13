@@ -14,6 +14,9 @@ class FilePickerFirmwareSource implements FirmwareSource {
     final result = await FilePicker.pickFiles(
       type: FileType.any,
       //allowedExtensions: ['bin'],
+      // Populate `bytes` so platforms/picker modes that do not expose a file
+      // path (e.g. web) still yield firmware data.
+      withData: true,
     );
 
     if (result == null || result.files.isEmpty) {
@@ -24,7 +27,20 @@ class FilePickerFirmwareSource implements FirmwareSource {
     final file = result.files.first;
     otaLogger.d('Selected firmware file: ${file.name}');
     try {
-      return Uint8List.fromList(await File(file.path!).readAsBytes());
+      final Uint8List? bytes = file.bytes;
+      if (bytes != null) {
+        return Uint8List.fromList(bytes);
+      }
+
+      final String? path = file.path;
+      if (path != null) {
+        return Uint8List.fromList(await File(path).readAsBytes());
+      }
+
+      throw OtaException(
+        'Selected firmware file "${file.name}" has no accessible bytes or '
+        'path. Try a different file or picker mode.',
+      );
     } on OtaException {
       rethrow;
     } catch (e) {
