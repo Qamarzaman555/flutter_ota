@@ -216,12 +216,12 @@
     <section class="sticky-summary">
       <div class="summary-grid">
         <div class="card">
-          <div class="metric-value">72/100</div>
+          <div class="metric-value">78/100</div>
           <div class="metric-label">Overall Score</div>
-          <div class="progress" aria-label="Overall score"><div class="bar" style="--score:72%"></div></div>
+          <div class="progress" aria-label="Overall score"><div class="bar" style="--score:78%"></div></div>
         </div>
         <div class="card">
-          <div class="metric-value">10</div>
+          <div class="metric-value">11</div>
           <div class="metric-label">Passed Requirements</div>
         </div>
         <div class="card">
@@ -229,7 +229,7 @@
           <div class="metric-label">Warnings</div>
         </div>
         <div class="card">
-          <div class="metric-value">2</div>
+          <div class="metric-value">1</div>
           <div class="metric-label">Failures</div>
         </div>
         <div class="card">
@@ -247,14 +247,14 @@
         and future extensibility.
       </p>
       <p>
-        The implementation is not production-ready yet. Two required items remain failed: the package/example tests still fail,
-        and <code>Esp32OtaPackage.updateFirmware</code> still does not reject concurrent calls at package level. CQ-5 is now
-        resolved through shared lazy firmware chunking and reused BLE repository wiring. There are still review risks around
-        forced verbose firmware logging and a hardcoded Firebase firmware URL in the example OTA flow.
+        The implementation is not production-ready yet because the package/example tests still fail. BUG-4 is now resolved:
+        <code>Esp32OtaPackage.updateFirmware</code> rejects concurrent calls before mutating OTA state, replacing the active
+        client, or cancelling the active progress subscription. CQ-5 is also resolved through shared lazy firmware chunking
+        and reused BLE repository wiring. There are still review risks around forced verbose firmware logging and a hardcoded
+        Firebase firmware URL in the example OTA flow.
       </p>
       <p>
-        Verification summary: <code>flutter analyze</code> passes. <code>dart format --output=none --set-exit-if-changed .</code>
-        reports formatting changes. <code>flutter test</code> fails because <code>test/ota_package_test.dart</code> has no
+        Verification summary: <code>flutter analyze</code> passes. <code>flutter test</code> fails because <code>test/ota_package_test.dart</code> has no
         <code>main()</code>. The example tests fail because the stock counter test does not match the app and GetX dependency
         setup is missing.
       </p>
@@ -342,8 +342,8 @@
             <tr>
               <td>BUG-4</td>
               <td>Add re-entrancy guard to <code>updateFirmware</code>.</td>
-              <td><span class="badge failed">&#10007; Missing</span></td>
-              <td><code>Esp32OtaPackage.updateFirmware</code> does not check <code>isUpdating</code> at entry. A second call can replace <code>_activeClient</code> and cancel progress forwarding while the first transfer still writes.</td>
+              <td><span class="badge passed">&check; Fully Implemented</span></td>
+              <td>Resolved. <code>Esp32OtaPackage.updateFirmware</code> checks <code>isUpdating</code> at method entry and throws <code>OtaException</code> before URI validation, stream/controller changes, transport creation, or <code>_activeClient</code> replacement.</td>
             </tr>
             <tr>
               <td>BUG-6 / BUG-7</td>
@@ -403,14 +403,14 @@
     <details open>
       <summary>3. Code Quality Review</summary>
       <div class="details-body">
-        <div class="finding high">
-          <h3>High: Package-level re-entrancy is still missing</h3>
+        <div class="finding low">
+          <h3>Low: Package-level re-entrancy guard is now in place</h3>
           <p>
-            <strong>Why:</strong> <code>Esp32OtaPackage.updateFirmware</code> creates a new <code>OtaClient</code> without rejecting
-            calls while another update is active. The example has a local UI guard, but the package API remains unsafe.
+            <strong>Why:</strong> <code>Esp32OtaPackage.updateFirmware</code> now checks <code>isUpdating</code> at the top of the
+            method and rejects a second call with <code>OtaException</code>.
           </p>
-          <p><strong>Impact:</strong> Concurrent calls can interleave BLE writes, drop progress events, and corrupt the OTA session.</p>
-          <p><strong>Fix:</strong> Add an entry guard such as <code>if (isUpdating) throw OtaException(...)</code> before creating a new client, and cover it with a unit test.</p>
+          <p><strong>Impact:</strong> This prevents a second caller from replacing the active client or cancelling the active progress subscription mid-transfer.</p>
+          <p><strong>Remaining recommendation:</strong> Add a focused unit test that proves concurrent calls are rejected without disturbing the first update.</p>
         </div>
         <div class="finding medium">
           <h3>Medium: Forced verbose logging contradicts the logging cleanup</h3>
@@ -461,9 +461,9 @@
             </tr>
             <tr>
               <td>Concurrent OTA calls</td>
-              <td><span class="badge failed">High</span></td>
-              <td>No guard at <code>lib/src/esp32_ota_package.dart:68</code>; old and new clients can overlap.</td>
-              <td>Reject concurrent calls at the package API boundary.</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>Guard added at <code>lib/src/esp32_ota_package.dart:69</code>. The check runs before any active client, subscription, or controller state is changed.</td>
+              <td>Add regression coverage for this behavior.</td>
             </tr>
             <tr>
               <td>Premature terminal progress for ESP-IDF</td>
@@ -494,7 +494,7 @@
         <ul>
           <li><strong>Existing example behavior:</strong> switching from file picker to hardcoded URL removes user choice and breaks offline OTA demos.</li>
           <li><strong>OTA flow:</strong> URL download failures now block Arduino OTA before any BLE write; the UI sees only a generic failure path unless the stream dialog is active.</li>
-          <li><strong>BLE communication:</strong> concurrent calls can still corrupt GATT writes because the package API does not enforce single-flight operation.</li>
+          <li><strong>BLE communication:</strong> package-level single-flight protection is now present for concurrent <code>updateFirmware</code> calls.</li>
           <li><strong>Error handling:</strong> terminal progress still relies on magic integer sentinels; consumers can misinterpret 100 as final commit in ESP-IDF.</li>
           <li><strong>Testing safety net:</strong> both package and example tests fail, so regressions are not being caught automatically.</li>
         </ul>
@@ -547,10 +547,10 @@
               <td>Yes</td>
             </tr>
             <tr>
-              <td>BUG-4 package re-entrancy guard missing</td>
-              <td><span class="badge failed">High</span></td>
-              <td>Concurrent OTA sessions can interleave writes and corrupt device state.</td>
-              <td>Yes</td>
+              <td>BUG-4 package re-entrancy guard</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>Concurrent OTA calls are rejected before the active session state can be mutated.</td>
+              <td>No</td>
             </tr>
             <tr>
               <td>ESP-IDF 100% emitted before device commit</td>
@@ -586,7 +586,6 @@
       <div class="details-body">
         <ul>
           <li>BUG-2: Real package tests and corrected example tests.</li>
-          <li>BUG-4: Re-entrancy guard inside <code>Esp32OtaPackage.updateFirmware</code>.</li>
           <li>CQ-2: Clean format check plus CI format/analyzer/test workflow.</li>
           <li>CQ-7 polish: Do not enable verbose full-firmware logging from the example by default.</li>
         </ul>
@@ -611,8 +610,8 @@
       <div class="details-body">
         <p><span class="badge failed">Do Not Merge Yet</span></p>
         <p>
-          The architecture direction is good, and most section-three work appears correctly implemented. However, the requested bug-fix section is incomplete
-          because tests are still broken and package-level concurrent update protection is missing. These should be fixed before production merge.
+          The architecture direction is good, and package-level concurrent update protection is now present. However, the requested bug-fix section is still
+          incomplete because the package/example tests remain broken. The test suite should be fixed before production merge.
         </p>
       </div>
     </details>
@@ -624,15 +623,15 @@
           <tbody>
             <tr>
               <th>Were all first-three-section requirements implemented correctly?</th>
-              <td>No. 10 passed, 2 partial, 2 failed among the 14 unique scoped requirements.</td>
+              <td>No. 11 passed, 2 partial, 1 failed among the 14 unique scoped requirements.</td>
             </tr>
             <tr>
               <th>Is anything missing?</th>
-              <td>Yes: required test fixes, re-entrancy guard, CI gate, and default-safe logging behavior.</td>
+              <td>Yes: required test fixes, CI gate, and default-safe logging behavior.</td>
             </tr>
             <tr>
               <th>Did any fix introduce new bugs?</th>
-              <td>The hardcoded URL and forced verbose logging in the example introduce production/demo risk. ESP-IDF progress can still report completion too early.</td>
+              <td>No major issue was found from the BUG-4 guard. The hardcoded URL and forced verbose logging in the example remain separate production/demo risks. ESP-IDF progress can still report completion too early.</td>
             </tr>
             <tr>
               <th>Is the code safe to merge?</th>
@@ -640,7 +639,7 @@
             </tr>
             <tr>
               <th>What should be fixed before merging?</th>
-              <td>Fix tests, add package re-entrancy guard, remove forced verbose logging, and avoid hardcoded firmware URL in production-facing flows.</td>
+              <td>Fix tests, remove forced verbose logging, and avoid hardcoded firmware URL in production-facing flows.</td>
             </tr>
             <tr>
               <th>Confidence</th>
