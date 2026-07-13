@@ -234,7 +234,9 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
       await otaPackage.updateFirmware(
         device,
         UpdateType.arduino,
-        FirmwareType.filepicker,
+        FirmwareType.url,
+        uri:
+            'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/1.0.0-16kb.ino.bin?alt=media&token=c1dc42bb-8c10-4ebe-8ace-1dfc63f27662',
         // uri:
         //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
         mtuSize: OtaBleConstants.arduinoMtuSize,

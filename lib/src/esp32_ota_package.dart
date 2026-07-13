@@ -104,23 +104,18 @@ class Esp32OtaPackage implements OtaPackage {
       onProgress: _emitPercentage,
     );
 
-    final List<Uint8List> binaryChunks = switch (firmwareType) {
-      FirmwareType.assets => await _firmwareLoader.readChunkedBinaryFile(
-        uri!,
-        mtuSize,
-      ),
-      FirmwareType.filepicker => await _firmwareLoader.loadChunkedFromPicker(
-        mtuSize,
-      ),
-      FirmwareType.url => await _firmwareLoader.loadChunkedFromUrl(
-        uri!,
-        mtuSize,
-      ),
-    };
-
-    if (binaryChunks.isEmpty) {
+    final Uint8List firmware = await _firmwareLoader.loadFirmware(
+      firmwareType,
+      uri,
+    );
+    if (firmware.isEmpty) {
       throw EmptyFirmwareException();
     }
+
+    final List<Uint8List> binaryChunks = _firmwareLoader.chunkFirmware(
+      firmware,
+      mtuSize,
+    );
 
     final bool succeeded = await protocol.update(
       binaryChunks: binaryChunks,
@@ -144,15 +139,15 @@ class Esp32OtaPackage implements OtaPackage {
   }) async {
     otaLogger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
 
-    final Uint8List firmware = switch (firmwareType) {
-      FirmwareType.assets => await _loadArduinoAssetFirmware(uri!),
-      FirmwareType.filepicker => await _firmwareLoader.loadRawFromPicker(),
-      FirmwareType.url => await _firmwareLoader.loadRawFromUrl(uri!),
-    };
-
+    final Uint8List firmware = await _firmwareLoader.loadFirmware(
+      firmwareType,
+      uri,
+    );
     if (firmware.isEmpty) {
       throw EmptyFirmwareException();
     }
+    verboseTrace('Loaded firmware bytes: $firmware');
+    otaLogger.d('Firmware length: ${firmware.length} bytes');
 
     final int firmwareByteLength = firmware.length;
     final int totalSegmentCount =
@@ -254,13 +249,6 @@ class Esp32OtaPackage implements OtaPackage {
     await protocol.sendFirmwareSegment(initialSegmentIndex, firmware, mtuSize);
     _emitPercentage(0);
     otaLogger.d('Started segment $initialSegmentIndex/$totalSegmentCount — 0%');
-  }
-
-  Future<Uint8List> _loadArduinoAssetFirmware(String uri) async {
-    final firmware = await _firmwareLoader.loadBytesFromAsset(uri);
-    verboseTrace('Loaded firmware bytes: $firmware');
-    otaLogger.d('Firmware length: ${firmware.length} bytes');
-    return firmware;
   }
 
   @override

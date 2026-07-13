@@ -6,10 +6,31 @@ import 'package:http/http.dart' as http;
 
 import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
+import 'package:flutter_ota/src/models/firmware_type.dart';
 
 /// Loads firmware binaries from assets, the file picker, or HTTP URLs.
+///
+/// Every source returns the raw firmware bytes as a [Uint8List]. Any
+/// protocol-specific chunking is performed downstream by the caller (e.g.
+/// [chunkFirmware] for ESP-IDF transfers).
 class FirmwareLoader {
   const FirmwareLoader();
+
+  /// Loads raw firmware bytes from the given [firmwareType].
+  ///
+  /// [uri] is the asset path or HTTP URL and is required for every source
+  /// except [FirmwareType.filepicker]. Returns an empty [Uint8List] when the
+  /// user cancels the file picker without selecting a file.
+  Future<Uint8List> loadFirmware(FirmwareType firmwareType, String? uri) async {
+    switch (firmwareType) {
+      case FirmwareType.assets:
+        return loadBytesFromAsset(uri!);
+      case FirmwareType.filepicker:
+        return await pickFirmwareBytes() ?? Uint8List(0);
+      case FirmwareType.url:
+        return downloadBytesFromUrl(uri!);
+    }
+  }
 
   /// Splits [bytes] into fixed-size chunks for ESP-IDF BLE transfer.
   List<Uint8List> chunkFirmware(List<int> bytes, int chunkSize) {
@@ -78,60 +99,5 @@ class FirmwareLoader {
     } catch (e) {
       throw OtaException('Error getting firmware data', e);
     }
-  }
-
-  Future<List<Uint8List>> readChunkedBinaryFile(
-    String filePath,
-    int mtuSize,
-  ) async {
-    otaLogger.d('Reading binary firmware from asset path: $filePath');
-    final Uint8List bytes = await loadBytesFromAsset(filePath);
-    verboseTrace('Firmware bytes: $bytes');
-    return chunkFirmware(bytes, mtuSize);
-  }
-
-  Future<List<Uint8List>> loadChunkedFromPicker(int mtuSize) async {
-    otaLogger.d('Chunk size (MTU) in file picker: $mtuSize');
-
-    final Uint8List? bytes = await pickFirmwareBytes();
-    if (bytes == null) {
-      return [];
-    }
-
-    if (bytes.isEmpty) {
-      throw EmptyFirmwareException(
-        'Empty firmware data. Please select a valid firmware file.',
-      );
-    }
-
-    otaLogger.d('Dividing firmware data into chunks');
-    return chunkFirmware(bytes, mtuSize);
-  }
-
-  Future<Uint8List> loadRawFromPicker() async {
-    final Uint8List? bytes = await pickFirmwareBytes();
-    if (bytes == null) {
-      return Uint8List(0);
-    }
-
-    if (bytes.isEmpty) {
-      throw EmptyFirmwareException(
-        'Empty firmware data. Please select a valid firmware file.',
-      );
-    }
-
-    return bytes;
-  }
-
-  Future<List<Uint8List>> loadChunkedFromUrl(String url, int mtuSize) async {
-    final Uint8List bytes = await downloadBytesFromUrl(url);
-    return chunkFirmware(bytes, mtuSize);
-  }
-
-  Future<Uint8List> loadRawFromUrl(String url) async {
-    otaLogger.d('Downloading firmware (Arduino) from: $url');
-    final Uint8List bytes = await downloadBytesFromUrl(url);
-    otaLogger.d('Downloaded firmware length: ${bytes.length} bytes');
-    return bytes;
   }
 }
