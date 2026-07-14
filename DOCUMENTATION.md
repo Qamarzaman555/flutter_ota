@@ -93,6 +93,35 @@ enum FirmwareType { assets, filepicker, url }
 
 The package supports both major ESP32 firmware types — ESP-IDF and Arduino — with an easy-to-use `updateFirmware` method that works for either.
 
+### Optional firmware integrity verification
+
+Pass a `FirmwareIntegrityConfig` to `updateFirmware` to enable any combination
+of checks your device (and server) support. Default is none — wire format is
+unchanged for existing firmware.
+
+| Feature | Role |
+| --- | --- |
+| `shaBeforeTransfer` | App SHA-256 vs server digest before BLE |
+| `packetCrc16` | CRC-16/Modbus per packet; NACK → retransmit that packet |
+| `shaAfterFlash` | Device verifies flash SHA-256 before success/reboot |
+
+```dart
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.arduino,
+  FirmwareType.url,
+  uri: firmwareUrl,
+  integrity: FirmwareIntegrityConfig(
+    features: {
+      IntegrityFeature.shaBeforeTransfer,
+      IntegrityFeature.packetCrc16,
+      IntegrityFeature.shaAfterFlash,
+    },
+    expectedSha256Hex: serverSha256Hex,
+  ),
+);
+```
+
 ### Real-time progress stream
 
 `percentageStream` emits the update progress (0–100) so the UI can show a
@@ -456,7 +485,8 @@ The method signature and the meaning of each parameter:
 | `updateType` | Yes | `UpdateType.espidf` or `UpdateType.arduino`. |
 | `firmwareType` | Yes | Source of the binary: `assets`, `filepicker`, or `url`. |
 | `uri` | All except `filepicker` | Asset path or URL of the `.bin`. |
-| `mtuSize` | Optional (default `500`) | Bytes per BLE packet. 1–512 for ESP-IDF, 1–510 for Arduino. |
+| `mtuSize` | Optional (default `500`) | Bytes per BLE packet. 1–512 for ESP-IDF, 1–510 for Arduino (lower by 2 when CRC-16 is on). |
+| `integrity` | Optional (default none) | Composable SHA-256 / CRC-16 features; enable only what firmware supports. |
 
 ### Step 8 — Handle setup/loading errors
 
@@ -555,6 +585,15 @@ The `1.0.0` release directly targets the categories where points were lost:
 
 ## 5. Changelog — what's new in 1.0.0
 
+### Added
+
+- Optional, composable firmware integrity (`FirmwareIntegrityConfig` /
+  `IntegrityFeature`): SHA-256 before transfer, per-packet CRC-16 with NACK
+  retransmission, and post-flash SHA-256 (ESP-IDF PostSHA uses `SET_HASH`
+  `0x07`). Features combine independently so devices may support any subset
+  (or none).
+- Integrity exception types for hash and CRC failures.
+
 `1.0.0` (2026-06-08) is a substantial release focused on **type safety, correct
 chunking, resource management, and a cleaner API**.
 
@@ -631,10 +670,11 @@ Planned directions to keep raising both the capability and the pub.dev score:
 - **Automatic recovery after cancel/disconnect** — manage the disconnect →
   reconnect → re-discover cycle internally so a fresh OTA can start without the
   caller manually rebuilding the connection.
-- **Retry & resume** — retry failed packets and, where the device firmware
-  supports it, resume an interrupted transfer instead of restarting from zero.
-- **Firmware integrity checks** — optional checksum/CRC or signature
-  verification of the binary before and after transfer.
+- **Retry & resume** — where the device firmware supports it, resume an
+  interrupted transfer instead of restarting from zero (per-packet CRC NACK
+  retransmission is already available via `IntegrityFeature.packetCrc16`).
+- ~~**Firmware integrity checks**~~ — shipped in 1.0.0 as optional SHA-256 /
+  CRC-16 features.
 
 ### API & developer experience
 

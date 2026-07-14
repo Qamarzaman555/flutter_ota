@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_ota/src/core/crc16.dart';
 import 'package:flutter_ota/src/core/firmware_chunker.dart';
+import 'package:flutter_ota/src/core/firmware_hash.dart';
 import 'package:flutter_ota/src/core/ota_protocol.dart';
 import 'package:flutter_ota/src/core/ota_transport.dart';
+import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
 import 'package:flutter_ota/src/models/constants.dart';
+import 'package:flutter_ota/src/models/firmware_integrity.dart';
 
 /// Arduino OTA transfer logic.
 ///
@@ -14,16 +18,33 @@ import 'package:flutter_ota/src/models/constants.dart';
 ///   [firmwareSegmentSize]) that the device acknowledges before requesting the
 ///   next one.
 /// * **BLE packet** — one characteristic write within a segment (`mtuSize` bytes
-///   of payload plus the 2-byte `0xFB` header).
+///   of payload plus the 2-byte `0xFB` header, and optionally a 2-byte CRC-16).
 class ArduinoOtaProtocol implements OtaProtocol {
+  /// Creates an Arduino protocol instance.
+  ///
+  /// Pass [integrity] to enable optional CRC / post-flash SHA features that the
+  /// paired firmware understands. Default is [FirmwareIntegrityConfig.none].
+  ArduinoOtaProtocol({
+    this.integrity = FirmwareIntegrityConfig.none,
+  });
+
   /// Bytes of firmware sent per device-acknowledged segment.
   static const int firmwareSegmentSize = 16000;
+
+  /// Integrity features active for this session.
+  final FirmwareIntegrityConfig integrity;
 
   StreamSubscription<Uint8List>? _subscription;
   Completer<bool>? _updateCompleter;
 
+  /// Packets of the segment currently being transferred (for CRC NACK retry).
+  List<Uint8List> _currentSegmentPackets = <Uint8List>[];
+  final Map<int, int> _packetAttempts = <int, int>{};
+  bool _crcFailure = false;
+
   @override
-  int get maxWriteSize => maxMtuSize - arduinoHeaderSize;
+  int get maxWriteSize =>
+      maxMtuSize - arduinoHeaderSize - integrity.packetCrcOverhead;
 
   @override
   Future<void> cancel() async {
@@ -47,6 +68,9 @@ class ArduinoOtaProtocol implements OtaProtocol {
     otaLogger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
     verboseTrace('Loaded firmware bytes: $firmware');
     otaLogger.d('Firmware length: ${firmware.length} bytes');
+    if (integrity.features.isNotEmpty) {
+      otaLogger.i('Integrity features: ${integrity.features}');
+    }
 
     final int firmwareByteLength = firmware.length;
     final int totalSegmentCount =
@@ -57,6 +81,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
     );
 
     _updateCompleter = Completer<bool>();
+    _crcFailure = false;
 
     _subscription = transport.inbound.listen((value) async {
       if (isCancelRequested()) {
@@ -79,8 +104,29 @@ class ArduinoOtaProtocol implements OtaProtocol {
             otaLogger.i('OTA update complete');
             _completeUpdate(true);
             return;
+          case arduinoHashMismatchOpcode:
+            final List<int>? expected = integrity.resolvedExpectedSha256;
+            final String transferredHex = sha256ToHex(sha256Of(firmware));
+            final String expectedHex =
+                expected != null ? sha256ToHex(expected) : '(none configured)';
+            otaLogger.e(
+              'Device reported post-flash SHA-256 mismatch.\n'
+              '  Expected (sent to device): $expectedHex\n'
+              '  SHA-256 of bytes transferred by app: $transferredHex\n'
+              '  If those two differ → wrong expectedSha256 on the app/server.\n'
+              '  If they match → device hashed a different flash region/content '
+              '(or transfer corruption).',
+            );
+            _failUpdate(
+              'Post-flash SHA-256 mismatch',
+              DeviceHashMismatchException(),
+            );
+            return;
           case 0xF2:
             otaLogger.i('New bin file installation begins on ESP32');
+            return;
+          case arduinoPacketNackOpcode:
+            await _handlePacketNack(transport, value);
             return;
           case 0xF1:
             if (value.length < 3) {
@@ -141,6 +187,8 @@ class ArduinoOtaProtocol implements OtaProtocol {
         mtuSize: mtuSize,
       );
 
+      await _sendOptionalIntegrityPrelude(transport, firmware);
+
       const int initialSegmentIndex = 0;
       await _sendFirmwareSegment(
         transport,
@@ -159,7 +207,81 @@ class ArduinoOtaProtocol implements OtaProtocol {
       await _subscription?.cancel();
       _subscription = null;
       _updateCompleter = null;
+      _currentSegmentPackets = <Uint8List>[];
+      _packetAttempts.clear();
     }
+  }
+
+  Future<void> _sendOptionalIntegrityPrelude(
+    OtaTransport transport,
+    Uint8List firmware,
+  ) async {
+    if (!integrity.requiresDeviceSupport) return;
+
+    int flags = 0;
+    if (integrity.packetCrc16) flags |= integrityFlagPacketCrc16;
+    if (integrity.verifyAfterFlash) flags |= integrityFlagShaAfterFlash;
+
+    final Uint8List flagsPacket = Uint8List.fromList([
+      arduinoIntegrityFlagsOpcode,
+      flags,
+    ]);
+    await transport.writeData(flagsPacket);
+    otaLogger.d('Sent integrity flags: 0x${flags.toRadixString(16)}');
+
+    if (integrity.verifyAfterFlash) {
+      final List<int> digest =
+          integrity.resolvedExpectedSha256 ?? sha256Of(firmware);
+      final String digestHex = sha256ToHex(digest);
+      otaLogger.i('SHA-256 to send to firmware (post-flash verify): $digestHex');
+      final Uint8List hashPacket = Uint8List(1 + sha256DigestSize)
+        ..[0] = arduinoExpectedHashOpcode;
+      hashPacket.setRange(1, 1 + sha256DigestSize, digest);
+      await transport.writeData(hashPacket);
+      otaLogger.d('Sent expected SHA-256 for post-flash verify: $digestHex');
+    }
+  }
+
+  Future<void> _handlePacketNack(
+    OtaTransport transport,
+    Uint8List value,
+  ) async {
+    if (!integrity.packetCrc16) {
+      otaLogger.w('Ignoring packet NACK while CRC feature is disabled');
+      return;
+    }
+    if (value.length < 2) {
+      _failUpdate('Short packet NACK (length ${value.length})');
+      return;
+    }
+    if (_crcFailure) return;
+
+    final int packetIndex = value[1];
+    if (packetIndex < 0 || packetIndex >= _currentSegmentPackets.length) {
+      _failUpdate(
+        'Out-of-range NACK packet index $packetIndex '
+        '(have ${_currentSegmentPackets.length} packets in current segment)',
+      );
+      return;
+    }
+
+    final int retransmits = _packetAttempts[packetIndex] ?? 0;
+    if (retransmits >= integrity.maxPacketRetries) {
+      _crcFailure = true;
+      final PacketCrcException error = PacketCrcException(
+        packetIndex: packetIndex,
+        attempts: retransmits + 1, // initial send + retransmits so far
+      );
+      _failUpdate(error.message, error);
+      return;
+    }
+
+    _packetAttempts[packetIndex] = retransmits + 1;
+    otaLogger.w(
+      'CRC NACK for packet $packetIndex — retransmitting '
+      '(${retransmits + 1}/${integrity.maxPacketRetries})',
+    );
+    await transport.writeData(_currentSegmentPackets[packetIndex]);
   }
 
   void _completeUpdate(bool succeeded) {
@@ -210,16 +332,31 @@ class ArduinoOtaProtocol implements OtaProtocol {
       'packets — overall $overallProgress%',
     );
 
+    _currentSegmentPackets = <Uint8List>[];
+    _packetAttempts.clear();
+
     int packetIndex = 0;
     for (final Uint8List payload in chunkFirmware(segment, mtuSize)) {
       verboseTrace(
         'BLE packet $packetIndex in segment $segmentIndex '
         '— overall $overallProgress%',
       );
-      final Uint8List packet = Uint8List(payload.length + arduinoHeaderSize);
+
+      final int wireLength = payload.length +
+          arduinoHeaderSize +
+          integrity.packetCrcOverhead;
+      final Uint8List packet = Uint8List(wireLength);
       packet[0] = 0xFB;
       packet[1] = packetIndex;
-      packet.setRange(arduinoHeaderSize, packet.length, payload);
+      packet.setRange(arduinoHeaderSize, arduinoHeaderSize + payload.length, payload);
+
+      if (integrity.packetCrc16) {
+        final int crc = crc16Modbus(payload);
+        packet[packet.length - 2] = (crc >> 8) & 0xFF;
+        packet[packet.length - 1] = crc & 0xFF;
+      }
+
+      _currentSegmentPackets.add(packet);
 
       verboseTrace(
         'Writing BLE packet, payload length is ${packet.length} '

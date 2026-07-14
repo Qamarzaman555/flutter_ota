@@ -233,12 +233,30 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
       otaVerboseLogging = true;
       await otaPackage.updateFirmware(
         device,
-        UpdateType.arduino,
+        UpdateType.espidf,
         FirmwareType.filepicker,
         // uri:
         //     'https://firebasestorage.googleapis.com/v0/b/liion-power-app.appspot.com/o/Internal%20fw%2FRelease_v1.7.1.img?alt=media&token=f2f814df-7ee7-4374-9a15-556d82655953',
         // uri: 'assets/1.0.1-16kb.ino.bin',
-        mtuSize: OtaBleConstants.arduinoMtuSize,
+        mtuSize: OtaBleConstants.espidfMtuSize,
+        integrity: FirmwareIntegrityConfig(
+          features: {
+            IntegrityFeature.shaBeforeTransfer,
+            // IntegrityFeature.packetCrc16,
+            IntegrityFeature.shaAfterFlash,
+          },
+          expectedSha256Hex:
+              '9600e2789056eb74fb4a78224d4fdc99ba0a19a91421a7125f5576fd27a66e4b',
+        ),
+        // Optional — enable only features your firmware supports:
+        // integrity: FirmwareIntegrityConfig(
+        //   features: {
+        //     IntegrityFeature.shaBeforeTransfer,
+        //     IntegrityFeature.packetCrc16,
+        //     IntegrityFeature.shaAfterFlash,
+        //   },
+        //   expectedSha256Hex: '<64-char hex from server>',
+        // ),
       );
     } on OtaException catch (e) {
       debugPrint('OTA failed: $e');

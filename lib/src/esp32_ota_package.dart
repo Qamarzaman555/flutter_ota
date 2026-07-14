@@ -10,6 +10,7 @@ import 'package:flutter_ota/src/firmware/asset_firmware_source.dart';
 import 'package:flutter_ota/src/firmware/file_picker_firmware_source.dart';
 import 'package:flutter_ota/src/firmware/url_firmware_source.dart';
 import 'package:flutter_ota/src/models/constants.dart';
+import 'package:flutter_ota/src/models/firmware_integrity.dart';
 import 'package:flutter_ota/src/models/firmware_type.dart';
 import 'package:flutter_ota/src/models/ota_package.dart';
 import 'package:flutter_ota/src/models/update_type.dart';
@@ -65,6 +66,7 @@ class Esp32OtaPackage implements OtaPackage {
     FirmwareType firmwareType, {
     String? uri,
     int mtuSize = 500,
+    FirmwareIntegrityConfig integrity = FirmwareIntegrityConfig.none,
   }) async {
     if (isUpdating) {
       throw OtaException(
@@ -78,7 +80,9 @@ class Esp32OtaPackage implements OtaPackage {
       throw OtaException('uri is required for the specified firmware type.');
     }
 
-    final OtaProtocol protocol = _protocolFor(updateType);
+    integrity.validate();
+
+    final OtaProtocol protocol = _protocolFor(updateType, integrity);
     if (mtuSize < 1 || mtuSize > protocol.maxWriteSize) {
       throw OtaException(
         'mtuSize must be between 1 and ${protocol.maxWriteSize} bytes for '
@@ -113,13 +117,16 @@ class Esp32OtaPackage implements OtaPackage {
       }
     });
 
-    await client.run(mtuSize: mtuSize);
+    await client.run(mtuSize: mtuSize, integrity: integrity);
   }
 
-  OtaProtocol _protocolFor(UpdateType updateType) {
+  OtaProtocol _protocolFor(
+    UpdateType updateType,
+    FirmwareIntegrityConfig integrity,
+  ) {
     return switch (updateType) {
-      UpdateType.espidf => EspIdfOtaProtocol(),
-      UpdateType.arduino => ArduinoOtaProtocol(),
+      UpdateType.espidf => EspIdfOtaProtocol(integrity: integrity),
+      UpdateType.arduino => ArduinoOtaProtocol(integrity: integrity),
     };
   }
 

@@ -12,6 +12,7 @@ export 'src/firmware/file_picker_firmware_source.dart';
 export 'src/firmware/url_firmware_source.dart';
 export 'src/logging/ota_logger.dart' show otaVerboseLogging;
 export 'src/models/constants.dart';
+export 'src/models/firmware_integrity.dart';
 export 'src/models/firmware_type.dart';
 export 'src/models/ota_package.dart';
 export 'src/models/update_type.dart';

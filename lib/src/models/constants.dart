@@ -19,5 +19,61 @@ const int maxMtuSize = 512;
 ///
 /// Because of this overhead an Arduino packet on the wire is `mtuSize + 2`
 /// bytes, so the largest usable `mtuSize` for the Arduino path is
-/// [maxMtuSize] - [arduinoHeaderSize].
+/// [maxMtuSize] - [arduinoHeaderSize]. When packet CRC-16 is enabled, add
+/// another [crc16Size] bytes on the wire.
 const int arduinoHeaderSize = 2;
+
+/// Size in bytes of a CRC-16 checksum appended to a data packet when
+/// [IntegrityFeature.packetCrc16] is enabled.
+const int crc16Size = 2;
+
+/// Size in bytes of a SHA-256 digest.
+const int sha256DigestSize = 32;
+
+/// Arduino: device NACKs a single BLE packet due to CRC error.
+/// Payload: `[0xF0, packetIndex]`.
+const int arduinoPacketNackOpcode = 0xF0;
+
+/// Arduino: app sends the expected SHA-256 digest for post-flash verification.
+/// Payload: `[0xFA, …32 digest bytes]`.
+const int arduinoExpectedHashOpcode = 0xFA;
+
+/// Arduino: app announces which optional integrity features are active.
+/// Payload: `[0xF9, flags]` where bit0 = CRC16, bit1 = shaAfterFlash.
+const int arduinoIntegrityFlagsOpcode = 0xF9;
+
+/// Arduino: device reports post-flash SHA-256 mismatch.
+const int arduinoHashMismatchOpcode = 0x0E;
+
+/// Integrity flags byte bit: packet CRC-16 enabled.
+const int integrityFlagPacketCrc16 = 0x01;
+
+/// Integrity flags byte bit: post-flash SHA-256 verification enabled.
+const int integrityFlagShaAfterFlash = 0x02;
+
+/// ESP-IDF control status: final success (including post-flash SHA when used).
+const int espIdfStatusSuccess = 5;
+
+/// ESP-IDF control status: post-flash SHA-256 mismatch.
+const int espIdfStatusHashMismatch = 6;
+
+/// ESP-IDF notify opcode: NACK of a firmware chunk due to CRC error.
+/// Payload: `[0xF0, indexHi, indexLo]` (16-bit chunk index).
+const int espIdfPacketNackOpcode = 0xF0;
+
+/// ESP-IDF control command: begin OTA (phone → device).
+const int espIdfControlBegin = 1;
+
+/// ESP-IDF control status: request accepted (device → phone).
+const int espIdfControlAck = 2;
+
+/// ESP-IDF control status: request rejected (device → phone).
+const int espIdfControlNak = 3;
+
+/// ESP-IDF control command: finish / verify (phone → device).
+const int espIdfControlFinish = 4;
+
+/// ESP-IDF control command: next data write is the expected SHA-256 digest
+/// (phone → device). PostSHA: send after all firmware chunks, before finish.
+/// Value is `7` — do **not** reuse `2` (`ACK`).
+const int espIdfControlExpectedHash = 7;
