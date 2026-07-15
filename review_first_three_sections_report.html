@@ -338,10 +338,10 @@
     <section class="sticky-summary">
       <div class="summary-grid">
         <div class="card">
-          <div class="metric-value">90/100</div>
+          <div class="metric-value">92/100</div>
           <div class="metric-label">Overall Score</div>
           <div class="progress" aria-label="Overall score">
-            <div class="bar overall" style="--score:90%"></div>
+            <div class="bar overall" style="--score:92%"></div>
           </div>
         </div>
         <div class="card">
@@ -389,6 +389,8 @@
         test, the stale file-picker comment has been cleaned up, and the local
         formatting gate now passes. BLE notification teardown has also been
         improved with best-effort disable-on-dispose behavior and focused tests.
+        Asset firmware loading now respects the exact <code>ByteData</code>
+        offset and length, avoiding accidental extra bytes from shared buffers.
       </p>
       <p>
         Concise result: 15 passed requirement checks, 1 implemented-differently check,
@@ -663,12 +665,13 @@
                 detail.</td>
             </tr>
             <tr>
-              <td>Asset firmware conversion ignores ByteData offset/length</td>
-              <td><span class="badge warning">Medium</span></td>
-              <td><code>AssetFirmwareSource</code> returns <code>fileData.buffer.asUint8List()</code> at
-                <code>lib/src/firmware/asset_firmware_source.dart:14</code>.</td>
-              <td>Use <code>fileData.buffer.asUint8List(fileData.offsetInBytes, fileData.lengthInBytes)</code> to avoid
-                possible extra bytes if the buffer is shared.</td>
+              <td>Asset firmware ByteData range handling</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td><code>AssetFirmwareSource</code> now uses
+                <code>fileData.buffer.asUint8List(fileData.offsetInBytes, fileData.lengthInBytes)</code>, so the
+                returned firmware bytes match the loaded asset view exactly.</td>
+              <td>Consider adding a small unit/widget test for asset-backed firmware loading if a fake asset bundle is
+                practical in this package.</td>
             </tr>
             <tr>
               <td>File-picker cancel is surfaced as failure, not cancellation</td>
@@ -804,11 +807,11 @@
               <td>No, but fix recommended</td>
             </tr>
             <tr>
-              <td>Asset ByteData conversion may include wrong byte range</td>
-              <td><span class="badge warning">Medium</span></td>
+              <td>Asset ByteData range handling</td>
+              <td><span class="badge passed">Resolved</span></td>
               <td>Low</td>
-              <td>Potential bad firmware bytes for asset source on some buffer layouts.</td>
-              <td>No, but fix is simple</td>
+              <td>Asset firmware loading now respects ByteData offset and length.</td>
+              <td>No</td>
             </tr>
             <tr>
               <td>Insufficient facade/concurrency regression tests</td>
@@ -844,7 +847,6 @@
             cancellation, empty firmware, and repeated updates after terminal states.</li>
           <li>Add injectable factories or a test constructor for <code>Esp32OtaPackage</code> so facade behavior can be
             tested without real BLE objects.</li>
-          <li>Use ByteData offset/length in <code>AssetFirmwareSource</code>.</li>
           <li>Keep the accepted local release checklist documented since CI is intentionally not used.</li>
         </ul>
       </div>
@@ -941,12 +943,12 @@
             </tr>
             <tr>
               <th>What improvements are still recommended?</th>
-              <td>Typed OTA events, better facade dependency injection, asset ByteData offset handling, documented local
-                quality gate, and broader facade-level tests.</td>
+              <td>Typed OTA events, better facade dependency injection, documented local quality gate, asset-loading
+                regression coverage, and broader facade-level tests.</td>
             </tr>
             <tr>
               <th>Review confidence</th>
-              <td>90%. Confidence is high for local code findings and automated checks, lower for exact document parity
+              <td>92%. Confidence is high for local code findings and automated checks, lower for exact document parity
                 because the Google Doc could not be directly accessed and hardware BLE testing was not performed.</td>
             </tr>
           </tbody>
