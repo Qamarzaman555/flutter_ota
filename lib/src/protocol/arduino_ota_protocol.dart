@@ -49,8 +49,8 @@ class ArduinoOtaProtocol implements OtaProtocol {
     otaLogger.d('Firmware length: ${firmware.length} bytes');
 
     final int firmwareByteLength = firmware.length;
-    final int totalSegmentCount =
-        (firmwareByteLength / firmwareSegmentSize).ceil();
+    final int totalSegmentCount = (firmwareByteLength / firmwareSegmentSize)
+        .ceil();
     otaLogger.d(
       'Firmware length: $firmwareByteLength bytes, '
       'segments: $totalSegmentCount',
@@ -84,9 +84,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
             return;
           case 0xF1:
             if (value.length < 3) {
-              _failUpdate(
-                'Short segment request (length ${value.length})',
-              );
+              _failUpdate('Short segment request (length ${value.length})');
               return;
             }
 

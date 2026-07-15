@@ -35,9 +35,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
     await transport.writeData(mtuPacket);
     await transport.writeControl(Uint8List.fromList([1]));
 
-    Uint8List value = await transport
-        .readControl()
-        .timeout(const Duration(seconds: 10));
+    Uint8List value = await transport.readControl().timeout(
+      const Duration(seconds: 10),
+    );
     if (value.isEmpty) {
       otaLogger.e('OTA update failed: empty control characteristic read');
       return false;
@@ -57,17 +57,13 @@ class EspIdfOtaProtocol implements OtaProtocol {
 
       final double progress = (chunkIndex / totalChunks) * 100;
       final int roundedProgress = progress.round();
-      otaLogger.d(
-        'Writing chunk $chunkIndex/$totalChunks — $roundedProgress%',
-      );
+      otaLogger.d('Writing chunk $chunkIndex/$totalChunks — $roundedProgress%');
       onProgress(roundedProgress);
     }
 
     await transport.writeControl(Uint8List.fromList([4]));
 
-    value = await transport
-        .readControl()
-        .timeout(const Duration(seconds: 600));
+    value = await transport.readControl().timeout(const Duration(seconds: 600));
     if (value.isEmpty) {
       otaLogger.e('OTA update failed: empty final control characteristic read');
       return false;

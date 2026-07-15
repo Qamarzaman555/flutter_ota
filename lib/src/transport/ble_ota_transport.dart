@@ -25,6 +25,8 @@ class BleOtaTransport implements OtaTransport {
   final BluetoothCharacteristic _writeCharacteristic;
   final BleRepository _bleRepository;
 
+  bool _notificationsEnabled = false;
+
   @override
   Future<void> prepare({required int mtuSize}) async {
     await _bleRepository.requestMtu(_device, mtuSize);
@@ -50,7 +52,8 @@ class BleOtaTransport implements OtaTransport {
 
   @override
   Future<void> startInbound() async {
-    await _notifyCharacteristic.setNotifyValue(true);
+    await _bleRepository.setNotifyValue(_notifyCharacteristic, true);
+    _notificationsEnabled = true;
   }
 
   @override
@@ -59,6 +62,12 @@ class BleOtaTransport implements OtaTransport {
 
   @override
   Future<void> dispose() async {
-    // BLE characteristics are owned by the caller; nothing to release here.
+    if (!_notificationsEnabled) return;
+    _notificationsEnabled = false;
+
+    // Best-effort: the link may already be gone after cancel/failure.
+    try {
+      await _bleRepository.setNotifyValue(_notifyCharacteristic, false);
+    } catch (_) {}
   }
 }

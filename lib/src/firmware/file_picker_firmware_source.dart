@@ -13,9 +13,7 @@ class FilePickerFirmwareSource implements FirmwareSource {
   Future<Uint8List> load() async {
     final result = await FilePicker.pickFiles(
       type: FileType.any,
-      //allowedExtensions: ['bin'],
-      // Populate `bytes` so platforms/picker modes that do not expose a file
-      // path (e.g. web) still yield firmware data.
+      // Populate `bytes` for picker modes that do not expose a file path.
       withData: true,
     );
 
