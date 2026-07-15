@@ -17,9 +17,7 @@ class EspIdfOtaProtocol implements OtaProtocol {
   ///
   /// Pass [integrity] to enable optional CRC / post-flash SHA features that the
   /// paired firmware understands. Default is [FirmwareIntegrityConfig.none].
-  EspIdfOtaProtocol({
-    this.integrity = FirmwareIntegrityConfig.none,
-  });
+  EspIdfOtaProtocol({this.integrity = FirmwareIntegrityConfig.none});
 
   /// Integrity features active for this session.
   final FirmwareIntegrityConfig integrity;
@@ -90,9 +88,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
       await transport.writeData(mtuPacket);
       await transport.writeControl(Uint8List.fromList([espIdfControlBegin]));
 
-      Uint8List value = await transport
-          .readControl()
-          .timeout(const Duration(seconds: 10));
+      Uint8List value = await transport.readControl().timeout(
+        const Duration(seconds: 10),
+      );
       if (value.isEmpty) {
         otaLogger.e('OTA update failed: empty control characteristic read');
         return false;
@@ -151,9 +149,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
         );
         await transport.writeData(Uint8List.fromList(digest));
 
-        final Uint8List hashAck = await transport
-            .readControl()
-            .timeout(const Duration(seconds: 10));
+        final Uint8List hashAck = await transport.readControl().timeout(
+          const Duration(seconds: 10),
+        );
         if (hashAck.isEmpty || hashAck[0] != espIdfControlAck) {
           otaLogger.e(
             'Device did not ACK expected SHA-256 '
@@ -166,9 +164,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
 
       await transport.writeControl(Uint8List.fromList([espIdfControlFinish]));
 
-      value = await transport
-          .readControl()
-          .timeout(const Duration(seconds: 600));
+      value = await transport.readControl().timeout(
+        const Duration(seconds: 600),
+      );
       if (value.isEmpty) {
         otaLogger.e(
           'OTA update failed: empty final control characteristic read',
@@ -185,8 +183,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
       if (value[0] == espIdfStatusHashMismatch) {
         final List<int>? expected = integrity.resolvedExpectedSha256;
         final String transferredHex = sha256ToHex(sha256Of(firmware));
-        final String expectedHex =
-            expected != null ? sha256ToHex(expected) : '(none configured)';
+        final String expectedHex = expected != null
+            ? sha256ToHex(expected)
+            : '(none configured)';
         otaLogger.e(
           'Device reported post-flash SHA-256 mismatch.\n'
           '  Expected (sent to device): $expectedHex\n'

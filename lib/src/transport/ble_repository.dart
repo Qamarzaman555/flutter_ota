@@ -20,4 +20,11 @@ class BleRepository {
   Future<void> requestMtu(BluetoothDevice device, int mtuSize) async {
     await device.requestMtu(mtuSize);
   }
+
+  Future<void> setNotifyValue(
+    BluetoothCharacteristic characteristic,
+    bool enabled,
+  ) async {
+    await characteristic.setNotifyValue(enabled);
+  }
 }

@@ -20,14 +20,8 @@ void main() {
         source: FakeFirmwareSource(firmware()),
       );
 
-      await expectLater(
-        client.run(mtuSize: 0),
-        throwsA(isA<OtaException>()),
-      );
-      await expectLater(
-        client.run(mtuSize: 513),
-        throwsA(isA<OtaException>()),
-      );
+      await expectLater(client.run(mtuSize: 0), throwsA(isA<OtaException>()));
+      await expectLater(client.run(mtuSize: 513), throwsA(isA<OtaException>()));
       expect(protocol.performCalled, isFalse);
     });
 

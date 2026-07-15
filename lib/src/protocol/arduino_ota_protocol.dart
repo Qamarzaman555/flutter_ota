@@ -24,9 +24,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
   ///
   /// Pass [integrity] to enable optional CRC / post-flash SHA features that the
   /// paired firmware understands. Default is [FirmwareIntegrityConfig.none].
-  ArduinoOtaProtocol({
-    this.integrity = FirmwareIntegrityConfig.none,
-  });
+  ArduinoOtaProtocol({this.integrity = FirmwareIntegrityConfig.none});
 
   /// Bytes of firmware sent per device-acknowledged segment.
   static const int firmwareSegmentSize = 16000;
@@ -73,8 +71,8 @@ class ArduinoOtaProtocol implements OtaProtocol {
     }
 
     final int firmwareByteLength = firmware.length;
-    final int totalSegmentCount =
-        (firmwareByteLength / firmwareSegmentSize).ceil();
+    final int totalSegmentCount = (firmwareByteLength / firmwareSegmentSize)
+        .ceil();
     otaLogger.d(
       'Firmware length: $firmwareByteLength bytes, '
       'segments: $totalSegmentCount',
@@ -107,8 +105,9 @@ class ArduinoOtaProtocol implements OtaProtocol {
           case arduinoHashMismatchOpcode:
             final List<int>? expected = integrity.resolvedExpectedSha256;
             final String transferredHex = sha256ToHex(sha256Of(firmware));
-            final String expectedHex =
-                expected != null ? sha256ToHex(expected) : '(none configured)';
+            final String expectedHex = expected != null
+                ? sha256ToHex(expected)
+                : '(none configured)';
             otaLogger.e(
               'Device reported post-flash SHA-256 mismatch.\n'
               '  Expected (sent to device): $expectedHex\n'
@@ -130,9 +129,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
             return;
           case 0xF1:
             if (value.length < 3) {
-              _failUpdate(
-                'Short segment request (length ${value.length})',
-              );
+              _failUpdate('Short segment request (length ${value.length})');
               return;
             }
 
@@ -233,7 +230,9 @@ class ArduinoOtaProtocol implements OtaProtocol {
       final List<int> digest =
           integrity.resolvedExpectedSha256 ?? sha256Of(firmware);
       final String digestHex = sha256ToHex(digest);
-      otaLogger.i('SHA-256 to send to firmware (post-flash verify): $digestHex');
+      otaLogger.i(
+        'SHA-256 to send to firmware (post-flash verify): $digestHex',
+      );
       final Uint8List hashPacket = Uint8List(1 + sha256DigestSize)
         ..[0] = arduinoExpectedHashOpcode;
       hashPacket.setRange(1, 1 + sha256DigestSize, digest);
@@ -342,13 +341,16 @@ class ArduinoOtaProtocol implements OtaProtocol {
         '— overall $overallProgress%',
       );
 
-      final int wireLength = payload.length +
-          arduinoHeaderSize +
-          integrity.packetCrcOverhead;
+      final int wireLength =
+          payload.length + arduinoHeaderSize + integrity.packetCrcOverhead;
       final Uint8List packet = Uint8List(wireLength);
       packet[0] = 0xFB;
       packet[1] = packetIndex;
-      packet.setRange(arduinoHeaderSize, arduinoHeaderSize + payload.length, payload);
+      packet.setRange(
+        arduinoHeaderSize,
+        arduinoHeaderSize + payload.length,
+        payload,
+      );
 
       if (integrity.packetCrc16) {
         final int crc = crc16Modbus(payload);

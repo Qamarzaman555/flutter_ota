@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Code Review - Flutter OTA Fix Verification</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --green: #166534;
+      --green-bg: #dcfce7;
+      --yellow: #92400e;
+      --yellow-bg: #fef3c7;
+      --red: #991b1b;
+      --red-bg: #fee2e2;
+      --blue: #1d4ed8;
+      --blue-bg: #dbeafe;
+      --slate-bg: #f8fafc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    header, main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    header { padding: 34px 0 16px; }
+    h1, h2, h3 { margin: 0 0 10px; line-height: 1.2; }
+    h1 { font-size: clamp(28px, 4vw, 42px); letter-spacing: 0; }
+    h2 { font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 0 0 12px; }
+    code {
+      background: #eef2f7;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-size: 0.94em;
+    }
+
+    .subtitle { max-width: 940px; color: var(--muted); }
+
+    .sticky-summary {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      margin: 0 -16px 18px;
+      padding: 12px 16px;
+      background: rgba(244, 246, 248, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1.1fr repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .card, details {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .card { padding: 18px; }
+    .section { margin: 18px 0; }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 3px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      margin-top: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+
+    .bar { height: 100%; width: var(--score); }
+    .bar.overall { background: linear-gradient(90deg, #ef4444, #f59e0b 46%, #16a34a); }
+    .bar.green { background: #16a34a; }
+    .bar.yellow { background: #f59e0b; }
+    .bar.red { background: #ef4444; }
+    .bar.blue { background: #2563eb; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .passed { color: var(--green); background: var(--green-bg); }
+    .warning { color: var(--yellow); background: var(--yellow-bg); }
+    .failed { color: var(--red); background: var(--red-bg); }
+    .info { color: var(--blue); background: var(--blue-bg); }
+
+    details { margin: 16px 0; overflow: hidden; }
+    summary {
+      cursor: pointer;
+      padding: 18px;
+      font-size: 18px;
+      font-weight: 800;
+      border-bottom: 1px solid transparent;
+    }
+    details[open] summary { border-bottom-color: var(--line); }
+    .details-body { padding: 18px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: 0; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .finding {
+      margin: 12px 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--line);
+      border-radius: 0 8px 8px 0;
+      background: var(--slate-bg);
+    }
+    .finding.high { border-left-color: #dc2626; }
+    .finding.medium { border-left-color: #f59e0b; }
+    .finding.low { border-left-color: #2563eb; }
+    .finding.resolved { border-left-color: #16a34a; }
+    .finding.suggestion { border-left-color: #64748b; }
+
+    ul { margin: 8px 0 0; padding-left: 20px; }
+    li { margin: 5px 0; }
+    .note {
+      padding: 14px 16px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e3a8a;
+    }
+
+    @media (max-width: 920px) {
+      .sticky-summary { position: static; margin-left: 0; margin-right: 0; }
+      .summary-grid, .two-col { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Code Review</h1>
+    <p class="subtitle">
+      Verification report for current <code>git status</code> changes on branch
+      <code>firmware_integrity</code>. Generated July 15, 2026.
+    </p>
+  </header>
+
+  <main>
+    <section class="sticky-summary">
+      <div class="summary-grid">
+        <div class="card">
+          <div class="metric-value">92/100</div>
+          <div class="metric-label">Overall Score</div>
+          <div class="progress" aria-label="Overall score"><div class="bar overall" style="--score:92%"></div></div>
+        </div>
+        <div class="card">
+          <div class="metric-value">5</div>
+          <div class="metric-label">Resolved Fixes</div>
+          <div class="progress"><div class="bar green" style="--score:90%"></div></div>
+        </div>
+        <div class="card">
+          <div class="metric-value">1</div>
+          <div class="metric-label">High Risk</div>
+          <div class="progress"><div class="bar red" style="--score:20%"></div></div>
+        </div>
+        <div class="card">
+          <div class="metric-value">45</div>
+          <div class="metric-label">Tests Passed</div>
+          <div class="progress"><div class="bar green" style="--score:100%"></div></div>
+        </div>
+        <div class="card">
+          <div class="metric-value"><span class="badge warning">Fix Before Production</span></div>
+          <div class="metric-label">Recommendation</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section card">
+      <h2>Executive Summary</h2>
+      <p>
+        The current fixes are mostly strong and verified. The working tree includes
+        an atomic OTA re-entrancy guard, exact asset byte slicing, BLE notification
+        disable-on-dispose behavior, file-picker comment cleanup, formatting cleanup,
+        and focused regression tests. The local verification gate passes.
+      </p>
+      <p>
+        The remaining production blocker is unchanged: ESP-IDF byte-transfer
+        progress can still emit <code>100</code> before final device acknowledgement,
+        while <code>Esp32OtaPackage</code> closes the public percentage stream on any
+        <code>100</code>. This can hide a later final-ack failure.
+      </p>
+      <p>
+        Merge recommendation: acceptable for continued development, but do not
+        ship the ESP-IDF OTA path to production until terminal progress semantics
+        are fixed or covered by typed OTA events.
+      </p>
+    </section>
+
+    <section class="section note">
+      <strong>Current git status reviewed:</strong>
+      modified source/test files include <code>Esp32OtaPackage</code>,
+      <code>AssetFirmwareSource</code>, <code>BleOtaTransport</code>,
+      <code>BleRepository</code>, OTA protocol formatting changes, and example/package
+      tests. New tests include <code>test/ble_ota_transport_test.dart</code> and
+      <code>test/esp32_ota_package_test.dart</code>. This report file was created
+      after verification, so it appears as an additional untracked file.
+    </section>
+
+    <details open>
+      <summary>1. Verification Results</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Check</th>
+              <th>Status</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Format gate</td>
+              <td><span class="badge passed">Passed</span></td>
+              <td><code>dart format --output=none --set-exit-if-changed lib test example/lib example/test</code> completed with 0 changes needed.</td>
+            </tr>
+            <tr>
+              <td>Package analyzer</td>
+              <td><span class="badge passed">Passed</span></td>
+              <td><code>flutter analyze</code> completed with no issues.</td>
+            </tr>
+            <tr>
+              <td>Package tests</td>
+              <td><span class="badge passed">Passed</span></td>
+              <td><code>flutter test</code> completed with 43 passing tests, including firmware-integrity, BLE teardown, and facade re-entrancy coverage.</td>
+            </tr>
+            <tr>
+              <td>Example analyzer</td>
+              <td><span class="badge passed">Passed</span></td>
+              <td><code>flutter analyze</code> in <code>example</code> completed with no issues.</td>
+            </tr>
+            <tr>
+              <td>Example tests</td>
+              <td><span class="badge passed">Passed</span></td>
+              <td><code>flutter test</code> in <code>example</code> completed with 2 passing tests.</td>
+            </tr>
+            <tr>
+              <td>Hardware BLE test</td>
+              <td><span class="badge info">Not Run</span></td>
+              <td>No physical ESP32/BLE device was available in this review environment.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details open>
+      <summary>2. Fix Verification</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Status</th>
+              <th>Evidence</th>
+              <th>Review Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Atomic re-entrancy guard</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td><code>_updateInProgress</code> is set before the first <code>await</code> in <code>lib/src/esp32_ota_package.dart:76-83</code> and cleared in <code>:128-130</code>.</td>
+              <td>The previous concurrent-start race is closed. Covered by <code>test/esp32_ota_package_test.dart</code>.</td>
+            </tr>
+            <tr>
+              <td>Asset ByteData range handling</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td><code>AssetFirmwareSource</code> now uses <code>fileData.offsetInBytes</code> and <code>fileData.lengthInBytes</code> at <code>lib/src/firmware/asset_firmware_source.dart:14-17</code>.</td>
+              <td>This avoids accidental extra bytes when <code>ByteData</code> is backed by a larger shared buffer.</td>
+            </tr>
+            <tr>
+              <td>BLE notification teardown</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td><code>BleOtaTransport</code> enables notifications through <code>BleRepository</code> and disables them during dispose at <code>lib/src/transport/ble_ota_transport.dart:54-71</code>.</td>
+              <td>Best-effort disable is appropriate because the BLE link may already be disconnected during cleanup. Covered by <code>test/ble_ota_transport_test.dart</code>.</td>
+            </tr>
+            <tr>
+              <td>File-picker stale comment cleanup</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>The stale commented extension line was removed from <code>FilePickerFirmwareSource</code>.</td>
+              <td>Small but useful readability cleanup.</td>
+            </tr>
+            <tr>
+              <td>Firmware integrity feature validation</td>
+              <td><span class="badge passed">Verified</span></td>
+              <td>Package tests include CRC-16, SHA-256 config validation, pre-transfer hash mismatch, Arduino wire format, ESP-IDF CRC/NACK, and post-flash hash flows.</td>
+              <td>The integrity feature set has meaningful unit coverage. Hardware compatibility still requires device-side validation.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details open>
+      <summary>3. Code Quality Review</summary>
+      <div class="details-body">
+        <div class="finding resolved">
+          <h3>Resolved: Facade concurrency is guarded synchronously</h3>
+          <p><strong>Why it matters:</strong> The facade no longer waits until an
+            <code>OtaClient</code> exists before reporting an update in progress.</p>
+          <p><strong>Impact:</strong> Two callers cannot both pass the guard and begin
+            manipulating OTA session state.</p>
+        </div>
+        <div class="finding resolved">
+          <h3>Resolved: BLE notification lifecycle is explicit</h3>
+          <p><strong>Why it matters:</strong> Notification enable/disable calls now
+            flow through <code>BleRepository</code>, making cleanup testable and
+            consistent.</p>
+          <p><strong>Impact:</strong> This reduces stale notification risk after
+            success, cancellation, failure, or disconnect cleanup.</p>
+        </div>
+        <div class="finding high">
+          <h3>High: Raw progress 100 is still treated as terminal</h3>
+          <p><strong>Why it is a problem:</strong> ESP-IDF reports transfer progress
+            using rounded percentages, including <code>100</code> after the last data
+            chunk at <code>lib/src/protocol/espidf_ota_protocol.dart:120-125</code>.
+            The facade closes the public stream on any <code>100</code> at
+            <code>lib/src/esp32_ota_package.dart:119-124</code>.</p>
+          <p><strong>Impact:</strong> A final control-read failure or device-side hash
+            mismatch can be hidden from listeners because the public progress stream
+            may already be closed as a success-looking <code>100</code>.</p>
+          <p><strong>Recommended fix:</strong> Reserve public terminal
+            <code>100</code> for confirmed <code>OtaClient</code> success, or move to a
+            typed event stream with separate progress, success, failure, and
+            cancellation events.</p>
+        </div>
+        <div class="finding medium">
+          <h3>Medium: Facade cleanup contract remains unclear</h3>
+          <p><strong>Why it is a problem:</strong> The facade closes its public stream
+            at terminal values, but keeps <code>_activeClient</code> and the progress
+            subscription until explicit dispose or a later update setup.</p>
+          <p><strong>Impact:</strong> Consumer expectations around "self-dispose" and
+            reuse after terminal states remain easy to misunderstand.</p>
+          <p><strong>Recommended fix:</strong> Either perform facade cleanup after
+            <code>client.run</code> completes, or revise documentation so ownership and
+            reuse rules are explicit.</p>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>4. Regression Analysis</summary>
+      <div class="details-body">
+        <ul>
+          <li><strong>BLE communication:</strong> notification teardown is safer and
+            tested, but hardware verification is still needed for device-specific
+            behavior.</li>
+          <li><strong>OTA flow:</strong> integrity additions are optional and default
+            to disabled, which reduces compatibility risk for existing firmware.</li>
+          <li><strong>ESP-IDF final acknowledgement:</strong> still at risk because
+            transfer progress can close the public stream before final device status.</li>
+          <li><strong>Asset firmware:</strong> byte slicing is safer and avoids shared
+            buffer range mistakes.</li>
+          <li><strong>Example UI:</strong> smoke tests pass; no new UI regression was
+            found from the current changes.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>5. Performance Analysis</summary>
+      <div class="details-body">
+        <ul>
+          <li><strong>Positive:</strong> asset loading now returns a view over the exact
+            byte range instead of copying a potentially larger buffer.</li>
+          <li><strong>Neutral:</strong> CRC/SHA integrity work is optional and disabled
+            by default, so existing flows avoid the extra CPU and wire overhead.</li>
+          <li><strong>Watch:</strong> packet CRC adds two bytes per packet and retry
+            logic where enabled; validate throughput on real devices before enabling
+            it broadly.</li>
+          <li><strong>Watch:</strong> SHA-256 computation requires full firmware bytes
+            in memory, which matches the existing package model but is still worth
+            noting for large images.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details open>
+      <summary>6. Risk Matrix</summary>
+      <div class="details-body">
+        <table>
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Severity</th>
+              <th>Status</th>
+              <th>Merge Blocker</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>ESP-IDF public stream closes at transfer <code>100</code> before final acknowledgement</td>
+              <td><span class="badge failed">High</span></td>
+              <td>Open</td>
+              <td>Yes, if ESP-IDF OTA is release scope</td>
+            </tr>
+            <tr>
+              <td>Concurrent OTA starts</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>Fixed and tested</td>
+              <td>No</td>
+            </tr>
+            <tr>
+              <td>BLE notification cleanup</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>Fixed and tested</td>
+              <td>No</td>
+            </tr>
+            <tr>
+              <td>Asset ByteData range handling</td>
+              <td><span class="badge passed">Resolved</span></td>
+              <td>Fixed</td>
+              <td>No</td>
+            </tr>
+            <tr>
+              <td>Firmware integrity hardware compatibility</td>
+              <td><span class="badge warning">Medium</span></td>
+              <td>Unit tested, hardware not tested here</td>
+              <td>No, if feature remains opt-in</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <details open>
+      <summary>7. Final Verdict</summary>
+      <div class="details-body">
+        <table>
+          <tbody>
+            <tr>
+              <th>Were the current fixes verified?</th>
+              <td>Yes. Format, analyzer, package tests, and example tests all pass.</td>
+            </tr>
+            <tr>
+              <th>Is anything still missing?</th>
+              <td>Yes. The ESP-IDF terminal progress semantics still need a fix or typed event model.</td>
+            </tr>
+            <tr>
+              <th>Did the current fixes introduce new bugs?</th>
+              <td>No new bug was found in local review or automated tests. Hardware BLE behavior was not tested.</td>
+            </tr>
+            <tr>
+              <th>Is the code safe to merge?</th>
+              <td>Safe for continued development. Hold production merge for ESP-IDF OTA until the premature terminal <code>100</code> issue is fixed.</td>
+            </tr>
+            <tr>
+              <th>Recommended next fix</th>
+              <td>Add a regression test for "ESP-IDF emits 100 transfer progress then final status fails" and change the facade so only confirmed success closes with public <code>100</code>.</td>
+            </tr>
+            <tr>
+              <th>Review confidence</th>
+              <td>90%. Confidence is high for local code/test findings, lower for BLE hardware behavior and device-side integrity compatibility.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </main>
+</body>
+</html>

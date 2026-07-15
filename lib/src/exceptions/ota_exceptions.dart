@@ -81,13 +81,11 @@ class DeviceHashMismatchException extends FirmwareIntegrityException {
 
 /// Thrown when a packet exceeds the CRC NACK retransmission limit.
 class PacketCrcException extends FirmwareIntegrityException {
-  PacketCrcException({
-    required this.packetIndex,
-    required this.attempts,
-  }) : super(
-         'Packet $packetIndex failed CRC verification after $attempts '
-         'attempt(s).',
-       );
+  PacketCrcException({required this.packetIndex, required this.attempts})
+    : super(
+        'Packet $packetIndex failed CRC verification after $attempts '
+        'attempt(s).',
+      );
 
   /// Zero-based index of the packet (within the current Arduino segment, or
   /// global chunk index for ESP-IDF).

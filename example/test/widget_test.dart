@@ -20,10 +20,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: PrimaryActionButton(
-              label: 'Start OTA',
-              onTap: () => taps++,
-            ),
+            child: PrimaryActionButton(label: 'Start OTA', onTap: () => taps++),
           ),
         ),
       ),

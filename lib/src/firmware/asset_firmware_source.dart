@@ -11,6 +11,9 @@ class AssetFirmwareSource implements FirmwareSource {
   @override
   Future<Uint8List> load() async {
     final ByteData fileData = await rootBundle.load(path);
-    return Uint8List.fromList(fileData.buffer.asUint8List());
+    return fileData.buffer.asUint8List(
+      fileData.offsetInBytes,
+      fileData.lengthInBytes,
+    );
   }
 }

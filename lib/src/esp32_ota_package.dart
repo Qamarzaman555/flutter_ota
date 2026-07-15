@@ -31,6 +31,10 @@ class Esp32OtaPackage implements OtaPackage {
   OtaClient? _activeClient;
   StreamSubscription<int>? _progressSubscription;
 
+  /// Set synchronously at the start of [updateFirmware], before any await, so
+  /// concurrent callers cannot both pass the re-entrancy check.
+  bool _updateInProgress = false;
+
   StreamController<int> _percentageController =
       StreamController<int>.broadcast();
 
@@ -38,7 +42,7 @@ class Esp32OtaPackage implements OtaPackage {
   Stream<int> get percentageStream => _percentageController.stream;
 
   @override
-  bool get isUpdating => _activeClient?.isUpdating ?? false;
+  bool get isUpdating => _updateInProgress;
 
   @override
   bool get firmwareUpdate => _activeClient?.firmwareUpdate ?? false;
@@ -54,6 +58,7 @@ class Esp32OtaPackage implements OtaPackage {
     _progressSubscription = null;
     await _activeClient?.dispose();
     _activeClient = null;
+    _updateInProgress = false;
     if (!_percentageController.isClosed) {
       await _percentageController.close();
     }
@@ -68,56 +73,61 @@ class Esp32OtaPackage implements OtaPackage {
     int mtuSize = 500,
     FirmwareIntegrityConfig integrity = FirmwareIntegrityConfig.none,
   }) async {
-    if (isUpdating) {
+    if (_updateInProgress) {
       throw OtaException(
         'An OTA update is already in progress. Wait for it to finish or call '
         'cancelUpdate() before starting another.',
       );
     }
+    _updateInProgress = true;
 
-    if (firmwareType != FirmwareType.filepicker &&
-        (uri == null || uri.isEmpty)) {
-      throw OtaException('uri is required for the specified firmware type.');
-    }
-
-    integrity.validate();
-
-    final OtaProtocol protocol = _protocolFor(updateType, integrity);
-    if (mtuSize < 1 || mtuSize > protocol.maxWriteSize) {
-      throw OtaException(
-        'mtuSize must be between 1 and ${protocol.maxWriteSize} bytes for '
-        '${updateType.name} (got $mtuSize).',
-      );
-    }
-
-    if (_percentageController.isClosed) {
-      _percentageController = StreamController<int>.broadcast();
-    }
-
-    await _progressSubscription?.cancel();
-
-    final BleOtaTransport transport = BleOtaTransport(
-      device: device,
-      notifyCharacteristic: notifyCharacteristic,
-      writeCharacteristic: writeCharacteristic,
-    );
-
-    final OtaClient client = OtaClient(
-      transport: transport,
-      protocol: protocol,
-      source: _sourceFor(firmwareType, uri),
-    );
-    _activeClient = client;
-
-    _progressSubscription = client.percentageStream.listen((value) {
-      if (_percentageController.isClosed) return;
-      _percentageController.add(value);
-      if (value == cancelledValue || value == failedValue || value == 100) {
-        _percentageController.close();
+    try {
+      if (firmwareType != FirmwareType.filepicker &&
+          (uri == null || uri.isEmpty)) {
+        throw OtaException('uri is required for the specified firmware type.');
       }
-    });
 
-    await client.run(mtuSize: mtuSize, integrity: integrity);
+      integrity.validate();
+
+      final OtaProtocol protocol = _protocolFor(updateType, integrity);
+      if (mtuSize < 1 || mtuSize > protocol.maxWriteSize) {
+        throw OtaException(
+          'mtuSize must be between 1 and ${protocol.maxWriteSize} bytes for '
+          '${updateType.name} (got $mtuSize).',
+        );
+      }
+
+      if (_percentageController.isClosed) {
+        _percentageController = StreamController<int>.broadcast();
+      }
+
+      await _progressSubscription?.cancel();
+
+      final BleOtaTransport transport = BleOtaTransport(
+        device: device,
+        notifyCharacteristic: notifyCharacteristic,
+        writeCharacteristic: writeCharacteristic,
+      );
+
+      final OtaClient client = OtaClient(
+        transport: transport,
+        protocol: protocol,
+        source: _sourceFor(firmwareType, uri),
+      );
+      _activeClient = client;
+
+      _progressSubscription = client.percentageStream.listen((value) {
+        if (_percentageController.isClosed) return;
+        _percentageController.add(value);
+        if (value == cancelledValue || value == failedValue || value == 100) {
+          _percentageController.close();
+        }
+      });
+
+      await client.run(mtuSize: mtuSize, integrity: integrity);
+    } finally {
+      _updateInProgress = false;
+    }
   }
 
   OtaProtocol _protocolFor(
