@@ -9,19 +9,15 @@ All notable changes to the `flutter_ota` package are documented in this file.
   `IntegrityFeature`:
   - `shaBeforeTransfer` — Flutter SHA-256 of the loaded binary vs a
     server-provided digest before any BLE write.
-  - `packetCrc16` — CRC-16/Modbus on each data packet; device NACK retransmits
-    only that packet (up to `maxPacketRetries`).
   - `shaAfterFlash` — expected digest sent to the device after the image
     (ESP-IDF PostSHA: `SET_HASH`/`0x07` + 32 bytes, then `DONE`); success only
     after post-flash verification (Arduino `0x0F` / ESP-IDF status `5`;
     mismatch Arduino `0x0E` / ESP-IDF status `6`).
 - Features combine freely so firmware may support SHA-start only, SHA-end only,
-  CRC only, SHA without CRC, both, or neither. Default remains no integrity
-  (unchanged wire format).
+  both, or neither. Default remains no integrity (unchanged wire format).
 - Typed integrity exceptions: `FirmwareIntegrityException`,
-  `FirmwareHashMismatchException`, `DeviceHashMismatchException`,
-  `PacketCrcException`.
-- Unit tests for CRC-16, config validation, pre-transfer SHA, and protocol
+  `FirmwareHashMismatchException`, `DeviceHashMismatchException`.
+- Unit tests for config validation, pre-transfer SHA, and protocol
   integrity paths.
 - Typed exception hierarchy for OTA failures — `OtaException` (base),
   `EmptyFirmwareException`, and `FirmwareDownloadException` (which carries the

@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter_ota/src/core/crc16.dart';
 import 'package:flutter_ota/src/core/firmware_hash.dart';
 import 'package:flutter_ota/src/core/ota_client.dart';
 import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
@@ -14,26 +13,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 
 void main() {
-  group('crc16Modbus', () {
-    test('matches known Modbus vector for "123456789"', () {
-      // CRC-16/MODBUS reference: 0x4B37 for ASCII "123456789"
-      expect(crc16Modbus(utf8Bytes('123456789')), 0x4B37);
-    });
-
-    test('appendCrc16 appends big-endian CRC', () {
-      final List<int> withCrc = appendCrc16(<int>[0x01, 0x02]);
-      expect(withCrc.length, 4);
-      final int crc = crc16Modbus(<int>[0x01, 0x02]);
-      expect(withCrc[2], (crc >> 8) & 0xFF);
-      expect(withCrc[3], crc & 0xFF);
-    });
-  });
-
   group('FirmwareIntegrityConfig', () {
     test('none disables all features', () {
       expect(FirmwareIntegrityConfig.none.features, isEmpty);
       expect(FirmwareIntegrityConfig.none.verifyBeforeTransfer, isFalse);
-      expect(FirmwareIntegrityConfig.none.packetCrc16, isFalse);
       expect(FirmwareIntegrityConfig.none.verifyAfterFlash, isFalse);
     });
 
@@ -52,18 +35,12 @@ void main() {
         (i) => i.toRadixString(16).padLeft(2, '0'),
       ).join();
 
-      final FirmwareIntegrityConfig crcOnly = FirmwareIntegrityConfig(
-        features: {IntegrityFeature.packetCrc16},
-      );
-      crcOnly.validate();
-      expect(crcOnly.packetCrcOverhead, crc16Size);
-      expect(crcOnly.requiresExpectedSha256, isFalse);
-
       final FirmwareIntegrityConfig shaStartOnly = FirmwareIntegrityConfig(
         features: {IntegrityFeature.shaBeforeTransfer},
         expectedSha256Hex: hex,
       );
       shaStartOnly.validate();
+      expect(shaStartOnly.requiresExpectedSha256, isTrue);
       expect(shaStartOnly.requiresDeviceSupport, isFalse);
 
       final FirmwareIntegrityConfig shaEndOnly = FirmwareIntegrityConfig(
@@ -77,13 +54,12 @@ void main() {
         features: {
           IntegrityFeature.shaBeforeTransfer,
           IntegrityFeature.shaAfterFlash,
-          IntegrityFeature.packetCrc16,
         },
         expectedSha256Hex: hex,
       );
       all.validate();
       expect(all.resolvedExpectedSha256, hasLength(sha256DigestSize));
-      expect(all.packetCrc16, isTrue);
+      expect(all.verifyAfterFlash, isTrue);
     });
 
     test('rejects malformed hex', () {
@@ -153,7 +129,7 @@ void main() {
   });
 
   group('ArduinoOtaProtocol integrity', () {
-    test('default wire format has no CRC and no integrity prelude', () async {
+    test('default wire format has no integrity prelude', () async {
       final FakeOtaTransport transport = FakeOtaTransport();
       final ArduinoOtaProtocol protocol = ArduinoOtaProtocol();
 
@@ -183,74 +159,24 @@ void main() {
       expect(await result, isTrue);
     });
 
-    test(
-      'sends integrity flags, hash, and CRC on packets when enabled',
-      () async {
-        final Uint8List firmware = Uint8List.fromList(
-          List<int>.generate(40, (i) => i),
-        );
-        final String hex = sha256.convert(firmware).toString();
-        final FakeOtaTransport transport = FakeOtaTransport();
-        final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
-          integrity: FirmwareIntegrityConfig(
-            features: {
-              IntegrityFeature.packetCrc16,
-              IntegrityFeature.shaAfterFlash,
-            },
-            expectedSha256Hex: hex,
-          ),
-        );
-
-        expect(
-          protocol.maxWriteSize,
-          maxMtuSize - arduinoHeaderSize - crc16Size,
-        );
-
-        final Future<bool> result = protocol.performUpdate(
-          transport: transport,
-          firmware: firmware,
-          mtuSize: 20,
-          isCancelRequested: () => false,
-          onProgress: (_) {},
-        );
-
-        await Future<void>.delayed(Duration.zero);
-
-        expect(transport.dataWrites[3].first, arduinoIntegrityFlagsOpcode);
-        expect(
-          transport.dataWrites[3][1],
-          integrityFlagPacketCrc16 | integrityFlagShaAfterFlash,
-        );
-        expect(transport.dataWrites[4].first, arduinoExpectedHashOpcode);
-        expect(transport.dataWrites[4].length, 1 + sha256DigestSize);
-
-        final Uint8List firstDataPacket = transport.dataWrites.firstWhere(
-          (w) => w.isNotEmpty && w.first == 0xFB,
-        );
-        // header(2) + payload(20) + crc(2)
-        expect(firstDataPacket.length, 24);
-        final List<int> payload = firstDataPacket.sublist(2, 22);
-        final int crc = crc16Modbus(payload);
-        expect(firstDataPacket[22], (crc >> 8) & 0xFF);
-        expect(firstDataPacket[23], crc & 0xFF);
-
-        transport.emitInbound(<int>[0x0F]);
-        expect(await result, isTrue);
-      },
-    );
-
-    test('retransmits a single packet on CRC NACK', () async {
+    test('sends integrity flags and hash when post-flash SHA is enabled', () async {
+      final Uint8List firmware = Uint8List.fromList(
+        List<int>.generate(40, (i) => i),
+      );
+      final String hex = sha256.convert(firmware).toString();
       final FakeOtaTransport transport = FakeOtaTransport();
       final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
         integrity: FirmwareIntegrityConfig(
-          features: {IntegrityFeature.packetCrc16},
-          maxPacketRetries: 3,
+          features: {IntegrityFeature.shaAfterFlash},
+          expectedSha256Hex: hex,
         ),
       );
 
+      expect(protocol.maxWriteSize, maxMtuSize - arduinoHeaderSize);
+
       final Future<bool> result = protocol.performUpdate(
         transport: transport,
-        firmware: Uint8List.fromList(List<int>.generate(40, (i) => i)),
+        firmware: firmware,
         mtuSize: 20,
         isCancelRequested: () => false,
         onProgress: (_) {},
@@ -258,16 +184,16 @@ void main() {
 
       await Future<void>.delayed(Duration.zero);
 
-      final Uint8List packet0 = transport.dataWrites.firstWhere(
-        (w) => w.length > 1 && w[0] == 0xFB && w[1] == 0,
+      expect(transport.dataWrites[3].first, arduinoIntegrityFlagsOpcode);
+      expect(transport.dataWrites[3][1], integrityFlagShaAfterFlash);
+      expect(transport.dataWrites[4].first, arduinoExpectedHashOpcode);
+      expect(transport.dataWrites[4].length, 1 + sha256DigestSize);
+
+      final Uint8List firstDataPacket = transport.dataWrites.firstWhere(
+        (w) => w.isNotEmpty && w.first == 0xFB,
       );
-      final int writesBeforeNack = transport.dataWrites.length;
-
-      transport.emitInbound(<int>[arduinoPacketNackOpcode, 0x00]);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(transport.dataWrites.length, writesBeforeNack + 1);
-      expect(transport.dataWrites.last, packet0);
+      // header(2) + payload(20)
+      expect(firstDataPacket.length, 22);
 
       transport.emitInbound(<int>[0x0F]);
       expect(await result, isTrue);
@@ -297,7 +223,7 @@ void main() {
   });
 
   group('EspIdfOtaProtocol integrity', () {
-    test('appends CRC and sends expected hash when enabled', () async {
+    test('sends expected hash when post-flash SHA is enabled', () async {
       final Uint8List firmware = Uint8List.fromList(
         List<int>.generate(10, (i) => i),
       );
@@ -313,10 +239,7 @@ void main() {
       final bool ok =
           await EspIdfOtaProtocol(
             integrity: FirmwareIntegrityConfig(
-              features: {
-                IntegrityFeature.packetCrc16,
-                IntegrityFeature.shaAfterFlash,
-              },
+              features: {IntegrityFeature.shaAfterFlash},
               expectedSha256Hex: hex,
             ),
           ).performUpdate(
@@ -334,14 +257,9 @@ void main() {
         espIdfControlFinish,
       ]);
       expect(espIdfControlExpectedHash, 7);
-      // data: MTU packet, firmware chunks (with CRC), then 32-byte digest (PostSHA)
+      // data: MTU packet, firmware chunks, then 32-byte digest (PostSHA)
       expect(transport.dataWrites.first.length, 2); // MTU
-      final Uint8List firstChunk = transport.dataWrites[1];
-      expect(firstChunk.length, 4 + crc16Size);
-      expect(
-        firstChunk.sublist(4),
-        appendCrc16(firstChunk.sublist(0, 4)).sublist(4),
-      );
+      expect(transport.dataWrites[1].length, 4);
       expect(transport.dataWrites.last.length, sha256DigestSize);
     });
 
@@ -422,5 +340,3 @@ void main() {
     });
   });
 }
-
-List<int> utf8Bytes(String s) => s.codeUnits;

@@ -242,7 +242,6 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
         integrity: FirmwareIntegrityConfig(
           features: {
             IntegrityFeature.shaBeforeTransfer,
-            // IntegrityFeature.packetCrc16,
             IntegrityFeature.shaAfterFlash,
           },
           expectedSha256Hex:
@@ -252,7 +251,6 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
         // integrity: FirmwareIntegrityConfig(
         //   features: {
         //     IntegrityFeature.shaBeforeTransfer,
-        //     IntegrityFeature.packetCrc16,
         //     IntegrityFeature.shaAfterFlash,
         //   },
         //   expectedSha256Hex: '<64-char hex from server>',

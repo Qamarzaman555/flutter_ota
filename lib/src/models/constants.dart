@@ -19,34 +19,22 @@ const int maxMtuSize = 512;
 ///
 /// Because of this overhead an Arduino packet on the wire is `mtuSize + 2`
 /// bytes, so the largest usable `mtuSize` for the Arduino path is
-/// [maxMtuSize] - [arduinoHeaderSize]. When packet CRC-16 is enabled, add
-/// another [crc16Size] bytes on the wire.
+/// [maxMtuSize] - [arduinoHeaderSize].
 const int arduinoHeaderSize = 2;
-
-/// Size in bytes of a CRC-16 checksum appended to a data packet when
-/// [IntegrityFeature.packetCrc16] is enabled.
-const int crc16Size = 2;
 
 /// Size in bytes of a SHA-256 digest.
 const int sha256DigestSize = 32;
-
-/// Arduino: device NACKs a single BLE packet due to CRC error.
-/// Payload: `[0xF0, packetIndex]`.
-const int arduinoPacketNackOpcode = 0xF0;
 
 /// Arduino: app sends the expected SHA-256 digest for post-flash verification.
 /// Payload: `[0xFA, …32 digest bytes]`.
 const int arduinoExpectedHashOpcode = 0xFA;
 
 /// Arduino: app announces which optional integrity features are active.
-/// Payload: `[0xF9, flags]` where bit0 = CRC16, bit1 = shaAfterFlash.
+/// Payload: `[0xF9, flags]` where bit1 = shaAfterFlash.
 const int arduinoIntegrityFlagsOpcode = 0xF9;
 
 /// Arduino: device reports post-flash SHA-256 mismatch.
 const int arduinoHashMismatchOpcode = 0x0E;
-
-/// Integrity flags byte bit: packet CRC-16 enabled.
-const int integrityFlagPacketCrc16 = 0x01;
 
 /// Integrity flags byte bit: post-flash SHA-256 verification enabled.
 const int integrityFlagShaAfterFlash = 0x02;
@@ -56,10 +44,6 @@ const int espIdfStatusSuccess = 5;
 
 /// ESP-IDF control status: post-flash SHA-256 mismatch.
 const int espIdfStatusHashMismatch = 6;
-
-/// ESP-IDF notify opcode: NACK of a firmware chunk due to CRC error.
-/// Payload: `[0xF0, indexHi, indexLo]` (16-bit chunk index).
-const int espIdfPacketNackOpcode = 0xF0;
 
 /// ESP-IDF control command: begin OTA (phone → device).
 const int espIdfControlBegin = 1;

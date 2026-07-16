@@ -6,21 +6,14 @@ import 'package:flutter_ota/src/models/constants.dart';
 /// Combine freely — the device (and app) may support any subset:
 /// * SHA-256 before transfer only
 /// * SHA-256 after flash only
-/// * CRC16 on packets only
-/// * SHA without CRC, CRC without SHA, both, or neither
+/// * SHA without post-flash verify, post-flash verify without pre-check, both,
+///   or neither
 enum IntegrityFeature {
   /// App computes SHA-256 of the loaded binary and compares it to
   /// [FirmwareIntegrityConfig.expectedSha256] before any BLE write.
   ///
   /// Requires no device support — verification is entirely on the Flutter side.
   shaBeforeTransfer,
-
-  /// Append a CRC-16 (Modbus) to each BLE data packet. If the firmware detects a
-  /// CRC error it NACKs that packet (`0xF0`); the app retransmits only that
-  /// packet (up to [FirmwareIntegrityConfig.maxPacketRetries]).
-  ///
-  /// Requires firmware that understands CRC-framed packets and NACK.
-  packetCrc16,
 
   /// After the binary is written to flash, the firmware computes SHA-256 and
   /// reports match/mismatch. The app treats the update as successful only after
@@ -43,11 +36,10 @@ enum IntegrityFeature {
 ///   expectedSha256Hex: 'a3f5…', // 64 hex chars
 /// )
 ///
-/// // Full path: pre-check + per-packet CRC + post-flash verify:
+/// // Pre-check + post-flash verify:
 /// FirmwareIntegrityConfig(
 ///   features: {
 ///     IntegrityFeature.shaBeforeTransfer,
-///     IntegrityFeature.packetCrc16,
 ///     IntegrityFeature.shaAfterFlash,
 ///   },
 ///   expectedSha256Hex: 'a3f5…',
@@ -63,7 +55,6 @@ class FirmwareIntegrityConfig {
     this.features = const <IntegrityFeature>{},
     this.expectedSha256Hex,
     this.expectedSha256Bytes,
-    this.maxPacketRetries = 3,
   });
 
   /// No integrity features — wire format matches prior behaviour when integrity
@@ -79,22 +70,16 @@ class FirmwareIntegrityConfig {
   /// Expected SHA-256 digest as raw bytes ([sha256DigestSize] bytes).
   final List<int>? expectedSha256Bytes;
 
-  /// Maximum retransmissions of a single CRC-NACK'd packet before failing.
-  final int maxPacketRetries;
-
   /// Whether [IntegrityFeature.shaBeforeTransfer] is enabled.
   bool get verifyBeforeTransfer =>
       features.contains(IntegrityFeature.shaBeforeTransfer);
-
-  /// Whether [IntegrityFeature.packetCrc16] is enabled.
-  bool get packetCrc16 => features.contains(IntegrityFeature.packetCrc16);
 
   /// Whether [IntegrityFeature.shaAfterFlash] is enabled.
   bool get verifyAfterFlash =>
       features.contains(IntegrityFeature.shaAfterFlash);
 
   /// Whether any feature that needs device firmware support is enabled.
-  bool get requiresDeviceSupport => packetCrc16 || verifyAfterFlash;
+  bool get requiresDeviceSupport => verifyAfterFlash;
 
   /// Whether any SHA feature is enabled (and thus an expected digest is needed).
   bool get requiresExpectedSha256 => verifyBeforeTransfer || verifyAfterFlash;
@@ -110,17 +95,8 @@ class FirmwareIntegrityConfig {
     return null;
   }
 
-  /// Extra bytes appended to each data packet when [packetCrc16] is on.
-  int get packetCrcOverhead => packetCrc16 ? crc16Size : 0;
-
   /// Validates this config and throws [OtaException] when inconsistent.
   void validate() {
-    if (maxPacketRetries < 1) {
-      throw OtaException(
-        'maxPacketRetries must be at least 1 (got $maxPacketRetries).',
-      );
-    }
-
     if (!requiresExpectedSha256) return;
 
     final List<int>? digest = resolvedExpectedSha256;

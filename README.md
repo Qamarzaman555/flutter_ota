@@ -10,9 +10,8 @@ This package provides functionalities for Over-The-Air (OTA) updates for ESP32 d
 * Handles communication with ESP32 devices using Bluetooth Low Energy (BLE).
 * Typed errors (`OtaException` and friends) and early validation of empty
   firmware, so failures surface clearly instead of corrupting an update.
-* Optional firmware integrity: SHA-256 before transfer, per-packet CRC-16 with
-  NACK retransmission, and post-flash SHA-256 — enable any combination your
-  device supports (or none).
+* Optional firmware integrity: SHA-256 before transfer and post-flash SHA-256
+  — enable any combination your device supports (or none).
 * Self-disposing: resources are released automatically when an update reaches a
   terminal state.
 
@@ -163,7 +162,6 @@ await otaPackage.updateFirmware(
   integrity: FirmwareIntegrityConfig(
     features: {
       IntegrityFeature.shaBeforeTransfer, // app vs server hash
-      IntegrityFeature.packetCrc16,       // per-packet CRC + NACK retry
       IntegrityFeature.shaAfterFlash,     // device verifies flash, then reboot
     },
     expectedSha256Hex: serverProvidedSha256Hex, // 64 hex chars
@@ -193,12 +191,10 @@ negotiated.
 
 **Aligning `requestMtu()` with `mtuSize`:**
 
-* **ESP-IDF:** each characteristic write is one firmware chunk (plus 2 CRC bytes
-  when `packetCrc16` is on), so `mtuSize` (+ CRC overhead) must fit the
-  negotiated ATT MTU (hard cap 512).
+* **ESP-IDF:** each characteristic write is one firmware chunk, so `mtuSize`
+  must fit the negotiated ATT MTU (hard cap 512).
 * **Arduino:** each write is `mtuSize + 2` bytes on the wire (2-byte `0xFB`
-  header), or `mtuSize + 4` when `packetCrc16` is enabled, so ensure the wire
-  size fits within the negotiated ATT MTU.
+  header), so ensure the wire size fits within the negotiated ATT MTU.
 
 ```dart
 // Arduino example: request enough ATT MTU for payload + 2-byte header.
@@ -218,11 +214,9 @@ while GATT writes fail at runtime.
 
 `mtuSize` is validated before any data is sent and must be:
 
-* **`UpdateType.espidf`:** between `1` and `512` (`maxMtuSize`), or `510` when
-  packet CRC-16 is enabled.
-* **`UpdateType.arduino`:** between `1` and `510` (`maxMtuSize - arduinoHeaderSize`),
-  or `508` when packet CRC-16 is enabled. The Arduino protocol prepends a 2-byte
-  header to every packet (and optionally a 2-byte CRC).
+* **`UpdateType.espidf`:** between `1` and `512` (`maxMtuSize`).
+* **`UpdateType.arduino`:** between `1` and `510` (`maxMtuSize - arduinoHeaderSize`).
+  The Arduino protocol prepends a 2-byte header to every packet.
 
 An out-of-range value throws an `OtaException` before any BLE writes begin.
 
@@ -234,7 +228,6 @@ independent — combine any subset your device supports:
 | Feature | Where it runs | Device support needed? |
 | --- | --- | --- |
 | `shaBeforeTransfer` | Flutter compares loaded bytes to `expectedSha256Hex` / `expectedSha256Bytes` before BLE | No |
-| `packetCrc16` | Each data packet gets a CRC-16/Modbus trailer; device NACK (`0xF0`) → app retransmits that packet only | Yes |
 | `shaAfterFlash` | App sends expected SHA-256; device verifies flash before success/reboot | Yes |
 
 ```dart
@@ -243,9 +236,6 @@ FirmwareIntegrityConfig(
   features: {IntegrityFeature.shaBeforeTransfer},
   expectedSha256Hex: '...', // 64 hex chars
 )
-
-// CRC only:
-FirmwareIntegrityConfig(features: {IntegrityFeature.packetCrc16})
 
 // SHA after flash only:
 FirmwareIntegrityConfig(
@@ -256,9 +246,8 @@ FirmwareIntegrityConfig(
 
 **ESP-IDF PostSHA:** after all image chunks, control `0x07` (`SET_HASH`) +
 32-byte digest on data, read `0x02` ACK, then control `0x04` DONE. Do not use
-control `0x02` for the hash — that opcode is device→phone ACK. Chunks may end
-with CRC-16; status `6` = hash mismatch / failure. **Arduino:** `0xF9` flags,
-`0xFA` + 32-byte digest, data packets may end with CRC-16, NACK `0xF0`,
+control `0x02` for the hash — that opcode is device→phone ACK. Status `6` =
+hash mismatch / failure. **Arduino:** `0xF9` flags, `0xFA` + 32-byte digest,
 mismatch `0x0E`.
 
 6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:

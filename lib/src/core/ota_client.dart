@@ -50,8 +50,8 @@ class OtaClient {
   /// Runs the OTA update.
   ///
   /// Pass [integrity] to optionally verify the binary before transfer
-  /// ([IntegrityFeature.shaBeforeTransfer]). Packet CRC and post-flash SHA are
-  /// handled by the [OtaProtocol] when configured on that protocol instance.
+  /// ([IntegrityFeature.shaBeforeTransfer]). Post-flash SHA is handled by the
+  /// [OtaProtocol] when configured on that protocol instance.
   Future<void> run({
     required int mtuSize,
     FirmwareIntegrityConfig integrity = FirmwareIntegrityConfig.none,
