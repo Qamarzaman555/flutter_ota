@@ -1,5 +1,7 @@
 **flutter_ota**
 
+Current version: **1.0.0**
+
 This package provides functionalities for Over-The-Air (OTA) updates for ESP32 devices using Flutter applications.
 
 **Features**
@@ -19,6 +21,15 @@ This package provides functionalities for Over-The-Air (OTA) updates for ESP32 d
 
 * Flutter `>=3.32.0`
 * Dart `>=3.8.0 <4.0.0`
+
+**What's new in 1.0.0**
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release notes. Highlights:
+
+* Typed OTA exceptions and early empty-firmware validation
+* Optional SHA-256 integrity (`shaBeforeTransfer`, `shaAfterFlash`)
+* Configurable `mtuSize` with protocol-aware limits
+* Automatic resource disposal when an update ends
 
 **Installation**
 
