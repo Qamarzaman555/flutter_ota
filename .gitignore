@@ -10,6 +10,9 @@
 .svn/
 migrate_working_dir/
 
+# Android — machine-local SDK paths (do not commit)
+**/local.properties
+
 # IntelliJ related
 *.iml
 *.ipr
