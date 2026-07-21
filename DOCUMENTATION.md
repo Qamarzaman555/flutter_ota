@@ -71,9 +71,17 @@ await otaPackage.updateFirmware(
 The firmware binary can come from three different places, selected via the
 `FirmwareType` enum:
 
-```33:43:lib/ota_package.dart
+```1:7:lib/src/models/update_type.dart
+/// The type of update protocol used to flash the firmware.
+///
+/// * [UpdateType.espidf]: Firmware update following the ESP-IDF/Espressif
+///   framework (formerly represented by the integer `1`).
+/// * [UpdateType.arduino]: Firmware update based on the Arduino framework for
+///   ESP32 (formerly represented by the integer `2`).
 enum UpdateType { espidf, arduino }
+```
 
+```1:9:lib/src/models/firmware_type.dart
 /// The source from which the firmware binary is loaded.
 ///
 /// * [FirmwareType.assets]: Load the firmware from the app's bundled assets
@@ -125,7 +133,7 @@ await otaPackage.updateFirmware(
 `percentageStream` emits the update progress (0–100) so the UI can show a
 progress bar live:
 
-```70:77:lib/ota_package.dart
+```42:49:lib/src/models/ota_package.dart
   /// Stream to provide progress percentage.
   ///
   /// When an update is cancelled via [cancelUpdate], a value of [cancelledValue]
@@ -139,7 +147,7 @@ progress bar live:
 Two sentinel values let listeners distinguish terminal outcomes without
 try/catch noise in the UI:
 
-```108:114:lib/ota_package.dart
+```1:7:lib/src/models/constants.dart
 /// Value emitted on [OtaPackage.percentageStream] when an update is cancelled.
 const int cancelledValue = -1;
 
@@ -152,20 +160,18 @@ const int failedValue = -2;
 ### Configurable, protocol-aware chunk size (`mtuSize`)
 
 You can tune the number of firmware bytes sent per BLE packet. The value is
-validated **up front** against the BLE single-write limit (512 bytes), with the
-Arduino path reserving 2 bytes for its header — so a bad value throws *before*
-any data is sent instead of failing mid-transfer:
+validated **up front** against each protocol's max write size (BLE single-write
+limit of 512 bytes, with Arduino reserving header/CRC overhead) — so a bad
+value throws *before* any data is sent instead of failing mid-transfer:
 
-```598:606:lib/ota_package.dart
-    final int maxChunkSize = updateType == UpdateType.arduino
-        ? maxMtuSize - arduinoHeaderSize
-        : maxMtuSize;
-    if (mtuSize < 1 || mtuSize > maxChunkSize) {
-      throw OtaException(
-        'mtuSize must be between 1 and $maxChunkSize bytes for '
-        '${updateType.name} (got $mtuSize).',
-      );
-    }
+```92:98:lib/src/esp32_ota_package.dart
+      final OtaProtocol protocol = _protocolFor(updateType, integrity);
+      if (mtuSize < 1 || mtuSize > protocol.maxWriteSize) {
+        throw OtaException(
+          'mtuSize must be between 1 and ${protocol.maxWriteSize} bytes for '
+          '${updateType.name} (got $mtuSize).',
+        );
+      }
 ```
 
 ### Typed error hierarchy
@@ -173,7 +179,7 @@ any data is sent instead of failing mid-transfer:
 Setup/loading failures are reported as typed exceptions so callers can branch on
 the failure type instead of parsing strings:
 
-```137:172:lib/ota_package.dart
+```6:41:lib/src/exceptions/ota_exceptions.dart
 class OtaException implements Exception {
   OtaException(this.message, [this.cause]);
 
@@ -217,12 +223,11 @@ class FirmwareDownloadException extends OtaException {
 Before any BLE handshake or write, the package aborts if the firmware is empty,
 so the device is never left mid-update with nothing to flash:
 
-```635:639:lib/ota_package.dart
-        /// Fail early on empty firmware: do NOT start the OTA handshake/writes,
-        /// otherwise the device is left mid-update with nothing to flash.
-        if (binaryChunks.isEmpty) {
-          throw EmptyFirmwareException();
-        }
+```75:78:lib/src/core/ota_client.dart
+      final Uint8List firmware = await _source.load();
+      if (firmware.isEmpty) {
+        throw EmptyFirmwareException();
+      }
 ```
 
 ### Crash-safe handling of BLE failures
@@ -231,15 +236,15 @@ If the device disconnects mid-transfer or a write fails with a GATT error, the
 package reports it on the stream (`failedValue`) instead of letting the exception
 propagate and crash the app:
 
-```287:296:lib/ota_package.dart
+```153:161:lib/src/core/ota_client.dart
   void _handleUpdateError(Object error) {
-    _logger.e(
+    otaLogger.e(
       'OTA update aborted: Device either returned an error or did not acknowledge the operation. '
       'Some devices may not support acknowledgement.'
       'Please ensure the device firmware supports proper OTA acknowledgement flow.',
     );
-    _logger.e('OTA update aborted', error: error);
-    firmwareUpdate = false;
+    otaLogger.e('OTA update aborted', error: error);
+    _firmwareUpdateSucceeded = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);
   }
 ```
@@ -249,14 +254,13 @@ propagate and crash the app:
 An in-progress update can be cancelled; the package stops sending data and emits
 `cancelledValue`:
 
-```226:234:lib/ota_package.dart
-  @override
-  Future<void> cancelUpdate() async {
+```125:132:lib/src/core/ota_client.dart
+  /// Requests cancellation of an in-progress OTA update.
+  Future<void> cancel() async {
     if (!_isUpdating) return;
-    _logger.w('OTA update cancellation requested');
+    otaLogger.w('OTA update cancellation requested');
     _cancelRequested = true;
-    await subscription?.cancel();
-    subscription = null;
+    await _protocol.cancel();
     _completeUpdate(cancelledValue);
   }
 ```
@@ -264,18 +268,14 @@ An in-progress update can be cancelled; the package stops sending data and emits
 ### Self-disposing / leak-safe
 
 When an update reaches a terminal state (success, failure, or cancel) the
-package cleans up its own subscription and stream — no dependency on a widget
-lifecycle, so the user can navigate freely while the update runs:
+package cleans up its own stream — no dependency on a widget lifecycle, so the
+user can navigate freely while the update runs:
 
-```269:278:lib/ota_package.dart
+```146:151:lib/src/core/ota_client.dart
   void _completeUpdate(int value) {
     if (_percentageController.isClosed) return;
     _isUpdating = false;
-    // Emit the terminal value first so listeners receive it before the
-    // stream's done event, then close.
     _percentageController.add(value);
-    subscription?.cancel();
-    subscription = null;
     _percentageController.close();
   }
 ```
@@ -342,7 +342,7 @@ Request the runtime permissions before starting an update.
 ### Step 3 — Import
 
 ```dart
-import 'package:flutter_ota/ota_package.dart';
+import 'package:flutter_ota/flutter_ota.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 ```
 
@@ -467,13 +467,14 @@ await otaPackage.updateFirmware(
 
 The method signature and the meaning of each parameter:
 
-```59:65:lib/ota_package.dart
+```26:33:lib/src/models/ota_package.dart
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
     FirmwareType firmwareType, {
     String? uri,
     int mtuSize,
+    FirmwareIntegrityConfig integrity,
   });
 ```
 
@@ -551,7 +552,7 @@ which the `1.0.0` release builds on:
 | **Pub points** | **135 / 160** |
 | **Likes** | 22 |
 | **Downloads** | ~101 |
-| **License** | BSD-3-Clause |
+| **License** | MIT |
 | **Platforms** | Android, iOS, Linux, macOS (Web & Windows not supported) |
 
 ### Pub points breakdown (135 / 160)

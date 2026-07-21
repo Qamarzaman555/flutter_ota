@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-06-08
 
 ### Added
+- GitHub Actions CI workflow that runs `dart format`, `flutter analyze`, and
+  `flutter test` (package + example) on pushes and pull requests.
 - Optional, composable firmware integrity via `FirmwareIntegrityConfig` /
   `IntegrityFeature`:
   - `shaBeforeTransfer` — Flutter SHA-256 of the loaded binary vs a

@@ -159,45 +159,48 @@ void main() {
       expect(await result, isTrue);
     });
 
-    test('sends integrity flags and hash when post-flash SHA is enabled', () async {
-      final Uint8List firmware = Uint8List.fromList(
-        List<int>.generate(40, (i) => i),
-      );
-      final String hex = sha256.convert(firmware).toString();
-      final FakeOtaTransport transport = FakeOtaTransport();
-      final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
-        integrity: FirmwareIntegrityConfig(
-          features: {IntegrityFeature.shaAfterFlash},
-          expectedSha256Hex: hex,
-        ),
-      );
+    test(
+      'sends integrity flags and hash when post-flash SHA is enabled',
+      () async {
+        final Uint8List firmware = Uint8List.fromList(
+          List<int>.generate(40, (i) => i),
+        );
+        final String hex = sha256.convert(firmware).toString();
+        final FakeOtaTransport transport = FakeOtaTransport();
+        final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
+          integrity: FirmwareIntegrityConfig(
+            features: {IntegrityFeature.shaAfterFlash},
+            expectedSha256Hex: hex,
+          ),
+        );
 
-      expect(protocol.maxWriteSize, maxMtuSize - arduinoHeaderSize);
+        expect(protocol.maxWriteSize, maxMtuSize - arduinoHeaderSize);
 
-      final Future<bool> result = protocol.performUpdate(
-        transport: transport,
-        firmware: firmware,
-        mtuSize: 20,
-        isCancelRequested: () => false,
-        onProgress: (_) {},
-      );
+        final Future<bool> result = protocol.performUpdate(
+          transport: transport,
+          firmware: firmware,
+          mtuSize: 20,
+          isCancelRequested: () => false,
+          onProgress: (_) {},
+        );
 
-      await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
 
-      expect(transport.dataWrites[3].first, arduinoIntegrityFlagsOpcode);
-      expect(transport.dataWrites[3][1], integrityFlagShaAfterFlash);
-      expect(transport.dataWrites[4].first, arduinoExpectedHashOpcode);
-      expect(transport.dataWrites[4].length, 1 + sha256DigestSize);
+        expect(transport.dataWrites[3].first, arduinoIntegrityFlagsOpcode);
+        expect(transport.dataWrites[3][1], integrityFlagShaAfterFlash);
+        expect(transport.dataWrites[4].first, arduinoExpectedHashOpcode);
+        expect(transport.dataWrites[4].length, 1 + sha256DigestSize);
 
-      final Uint8List firstDataPacket = transport.dataWrites.firstWhere(
-        (w) => w.isNotEmpty && w.first == 0xFB,
-      );
-      // header(2) + payload(20)
-      expect(firstDataPacket.length, 22);
+        final Uint8List firstDataPacket = transport.dataWrites.firstWhere(
+          (w) => w.isNotEmpty && w.first == 0xFB,
+        );
+        // header(2) + payload(20)
+        expect(firstDataPacket.length, 22);
 
-      transport.emitInbound(<int>[0x0F]);
-      expect(await result, isTrue);
-    });
+        transport.emitInbound(<int>[0x0F]);
+        expect(await result, isTrue);
+      },
+    );
 
     test('fails on post-flash hash mismatch opcode', () async {
       final FakeOtaTransport transport = FakeOtaTransport();

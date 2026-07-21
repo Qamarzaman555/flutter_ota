@@ -33,3 +33,8 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .packages
 build/
+
+# Internal review / AI artifacts (never commit or publish)
+code_review.html
+*_report.html
+deep_pr_review*.html

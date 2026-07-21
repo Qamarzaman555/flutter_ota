@@ -102,7 +102,7 @@ permission-handling flow.
 1. Import the necessary libraries:
 
 ```dart
-import 'package:flutter_ota/ota_package.dart';
+import 'package:flutter_ota/flutter_ota.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 ```
 

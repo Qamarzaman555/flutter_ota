@@ -71,9 +71,7 @@ class EspIdfOtaProtocol implements OtaProtocol {
 
       final double progress = (chunkIndex / totalChunks) * 100;
       final int roundedProgress = progress.round();
-      otaLogger.d(
-        'Writing chunk $chunkIndex/$totalChunks — $roundedProgress%',
-      );
+      otaLogger.d('Writing chunk $chunkIndex/$totalChunks — $roundedProgress%');
       onProgress(roundedProgress);
     }
 
@@ -107,13 +105,9 @@ class EspIdfOtaProtocol implements OtaProtocol {
 
     await transport.writeControl(Uint8List.fromList([espIdfControlFinish]));
 
-    value = await transport.readControl().timeout(
-      const Duration(seconds: 600),
-    );
+    value = await transport.readControl().timeout(const Duration(seconds: 600));
     if (value.isEmpty) {
-      otaLogger.e(
-        'OTA update failed: empty final control characteristic read',
-      );
+      otaLogger.e('OTA update failed: empty final control characteristic read');
       return false;
     }
     otaLogger.d('Control characteristic returned: ${value[0]}');
