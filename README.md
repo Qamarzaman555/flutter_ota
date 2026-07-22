@@ -31,6 +31,10 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release notes. Highlights:
 * Configurable `mtuSize` with protocol-aware limits
 * Automatic resource disposal when an update ends
 
+Upgrading from `0.x`? Follow the breaking-API steps in
+[MIGRATION.md](MIGRATION.md). Common questions: [FAQ.md](FAQ.md). Want to
+contribute? See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 **Installation**
 
 1. Add the following line to your `pubspec.yaml` file:

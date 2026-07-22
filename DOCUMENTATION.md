@@ -8,6 +8,8 @@ ESP32 devices over **Bluetooth Low Energy (BLE)**.
 - **Repository:** https://github.com/sparkleo-io/flutter_ota
 - **Publisher:** sparkleo.io
 - **SDK requirements:** Dart `>=3.8.0 <4.0.0`, Flutter `>=3.32.0`
+- **Also see:** [MIGRATION.md](MIGRATION.md) (0.x → 1.0.0), [FAQ.md](FAQ.md),
+  [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
