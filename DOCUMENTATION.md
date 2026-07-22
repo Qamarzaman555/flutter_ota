@@ -16,9 +16,7 @@ ESP32 devices over **Bluetooth Low Energy (BLE)**.
 1. [What is this package & why it exists](#1-what-is-this-package--why-it-exists)
 2. [Main features](#2-main-features)
 3. [How to use it](#3-how-to-use-it)
-4. [Current package scoring](#4-current-package-scoring)
-5. [Changelog — what's new in 1.0.0](#5-changelog--whats-new-in-100)
-6. [Future plan](#6-future-plan)
+4. [Changelog — what's new in 1.0.0](#4-changelog--whats-new-in-100)
 
 ---
 
@@ -541,48 +539,10 @@ await otaPackage.dispose();
 
 ---
 
-## 4. Current package scoring
+## 4. Changelog — what's new in 1.0.0
 
-The package is published on **pub.dev** under the `sparkleo.io` publisher. The
-following reflects the most recently analyzed published release (**0.1.15**),
-which the `1.0.0` release builds on:
-
-| Metric | Value |
-| --- | --- |
-| **Pub points** | **135 / 160** |
-| **Likes** | 22 |
-| **Downloads** | ~101 |
-| **License** | MIT |
-| **Platforms** | Android, iOS, Linux, macOS (Web & Windows not supported) |
-
-### Pub points breakdown (135 / 160)
-
-| Category | Score | Notes |
-| --- | --- | --- |
-| Follow Dart file conventions | 25 / 30 | Lost 5 points: `CHANGELOG.md` did not reference the current version. |
-| Provide documentation | 20 / 20 | 62.5% of the public API has dartdoc comments; an example is included. |
-| Platform support | 20 / 20 | Supports 4 of 6 platforms. |
-| Pass static analysis | 40 / 50 | Lost 10 points: a lint/formatting issue (`List<int>` angle brackets in a doc comment interpreted as HTML). |
-| Support up-to-date dependencies | 30 / 40 | Lost 10 points: outdated constraints on `file_picker` and `flutter_blue_plus`. |
-
-### How 1.0.0 addresses the gaps
-
-The `1.0.0` release directly targets the categories where points were lost:
-
-- **CHANGELOG (+5 potential):** `CHANGELOG.md` now contains a full, dated `1.0.0`
-  entry referencing the current version.
-- **Dependencies (+10 potential):** `pubspec.yaml` upgrades to current major
-  versions — `flutter_blue_plus: ^2.3.8`, `file_picker: ^11.0.2`,
-  `http: ^1.2.0`, plus a new `logger: ^2.7.0`.
-- **Static analysis (+10 potential):** `print` statements were replaced with
-  structured logging and the API was cleaned up, reducing analysis findings.
-
-> Note: pub.dev recomputes the score after a new version is analyzed, so the
-> exact `1.0.0` figure will be confirmed once it is published and re-scored.
-
----
-
-## 5. Changelog — what's new in 1.0.0
+`1.0.0` (2026-06-08) is a substantial release focused on **type safety, correct
+chunking, resource management, and a cleaner API**.
 
 ### Added
 
@@ -591,12 +551,6 @@ The `1.0.0` release directly targets the categories where points were lost:
   (ESP-IDF PostSHA uses `SET_HASH` `0x07`). Features combine independently so
   devices may support any subset (or none).
 - Integrity exception types for hash failures.
-
-`1.0.0` (2026-06-08) is a substantial release focused on **type safety, correct
-chunking, resource management, and a cleaner API**.
-
-### Added
-
 - **Typed exception hierarchy** — `OtaException` (base),
   `EmptyFirmwareException`, and `FirmwareDownloadException` (carrying the HTTP
   `statusCode`) — so callers handle errors by type instead of matching raw
@@ -656,44 +610,3 @@ chunking, resource management, and a cleaner API**.
 | Empty firmware could leave the device mid-update. | Early-fail guard aborts before any write. |
 | Manual cleanup required. | Self-disposing + explicit `dispose()`. |
 | `print`-based logging shipped to production. | Structured `logger`, suppressed in release builds. |
-
----
-
-## 6. Future plan
-
-Planned directions to keep raising both the capability and the pub.dev score:
-
-### Reliability & protocol
-
-- **Automatic recovery after cancel/disconnect** — manage the disconnect →
-  reconnect → re-discover cycle internally so a fresh OTA can start without the
-  caller manually rebuilding the connection.
-- **Retry & resume** — where the device firmware supports it, resume an
-  interrupted transfer instead of restarting from zero.
-- ~~**Firmware integrity checks**~~ — shipped in 1.0.0 as optional SHA-256
-  features.
-
-### API & developer experience
-
-- **Richer progress events** — a structured progress/state object (bytes sent,
-  total bytes, current phase) alongside the simple percentage.
-- **Helper for characteristic discovery** — a utility to locate the OTA service
-  and notify/write characteristics, reducing the boilerplate currently shown in
-  the example.
-- **Higher test coverage** — unit tests over the chunking, validation, and
-  protocol state machine using mocked BLE characteristics.
-
-### Ecosystem & scoring
-
-- **Keep dependencies current** — track `flutter_blue_plus`, `file_picker`, and
-  `http` major releases to retain the up-to-date-dependencies points.
-- **Close the remaining static-analysis gap** — eliminate the documentation/lint
-  finding to recover the last analysis points.
-- **Broaden platform support** — evaluate options for Web/Windows where the
-  underlying BLE and file-picker stacks allow.
-- **Expand documentation** — more end-to-end recipes (ESP-IDF vs Arduino
-  firmware setup) and troubleshooting guidance for common GATT errors.
-
----
-
-*Generated for `flutter_ota` v1.0.0.*
