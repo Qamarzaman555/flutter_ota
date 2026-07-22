@@ -16,7 +16,8 @@ ESP32 devices over **Bluetooth Low Energy (BLE)**.
 1. [What is this package & why it exists](#1-what-is-this-package--why-it-exists)
 2. [Main features](#2-main-features)
 3. [How to use it](#3-how-to-use-it)
-4. [Changelog — what's new in 1.0.0](#4-changelog--whats-new-in-100)
+4. [Protocol handshake sequences](#4-protocol-handshake-sequences)
+5. [Changelog — what's new in 1.0.0](#5-changelog--whats-new-in-100)
 
 ---
 
@@ -539,7 +540,90 @@ await otaPackage.dispose();
 
 ---
 
-## 4. Changelog — what's new in 1.0.0
+## 4. Protocol handshake sequences
+
+Both paths assume the phone is already connected and has discovered the OTA
+**notify** and **write** characteristics (ESP-IDF also uses a separate
+**control** characteristic for begin/finish/status). Optional integrity steps
+appear as `opt` blocks — they run only when `FirmwareIntegrityConfig` enables
+them.
+
+### ESP-IDF (`UpdateType.espidf`)
+
+Phone writes a little-endian MTU size on the **data** characteristic, then
+drives the session with **control** opcodes (`1` begin, `7` set-hash, `4`
+finish). The device answers on control with status bytes (`2` ACK, `5`
+success, `6` hash mismatch).
+
+```mermaid
+sequenceDiagram
+  participant App as Flutter app
+  participant Data as Data characteristic
+  participant Ctrl as Control characteristic
+
+  App->>Data: MTU size (2 bytes, little-endian)
+  App->>Ctrl: BEGIN (0x01)
+  Ctrl-->>App: ACK (0x02) or NAK (0x03)
+
+  loop Each firmware chunk ≤ mtuSize
+    App->>Data: Firmware chunk
+  end
+
+  opt shaAfterFlash enabled
+    App->>Ctrl: SET_HASH (0x07)
+    App->>Data: Expected SHA-256 (32 bytes)
+    Ctrl-->>App: ACK (0x02)
+  end
+
+  App->>Ctrl: FINISH (0x04)
+  Ctrl-->>App: SUCCESS (0x05) or HASH_MISMATCH (0x06)
+```
+
+### Arduino (`UpdateType.arduino`)
+
+Phone starts with a three-packet handshake on the **write** characteristic
+(`0xFD` / `0xFE` / `0xFF`), then streams **16 KB segments** as `0xFB` BLE
+packets ending in a `0xFC` marker. The device requests the next segment with
+`0xF1` on notify and finishes with `0x0F` (or `0x0E` on hash mismatch).
+
+```mermaid
+sequenceDiagram
+  participant App as Flutter app
+  participant Write as Write characteristic
+  participant Notify as Notify characteristic
+
+  App->>Write: 0xFD (start OTA)
+  App->>Write: 0xFE + file size (4 bytes, big-endian)
+  App->>Write: 0xFF + segment count (2) + mtuSize (2)
+
+  opt shaAfterFlash enabled
+    App->>Write: 0xF9 + integrity flags
+    App->>Write: 0xFA + expected SHA-256 (32 bytes)
+  end
+
+  App->>Write: Segment 0 — N× (0xFB + index + payload)
+  App->>Write: 0xFC + segment length + segment index
+
+  loop Until all segments delivered
+    Notify-->>App: 0xF1 + next segment index (2 bytes)
+    App->>Write: Segment i — N× (0xFB + index + payload)
+    App->>Write: 0xFC + segment length + segment index
+  end
+
+  opt Device starting install
+    Notify-->>App: 0xF2 (install begins)
+  end
+
+  alt Success
+    Notify-->>App: 0x0F (OTA complete)
+  else Post-flash hash mismatch
+    Notify-->>App: 0x0E (hash mismatch)
+  end
+```
+
+---
+
+## 5. Changelog — what's new in 1.0.0
 
 `1.0.0` (2026-06-08) is a substantial release focused on **type safety, correct
 chunking, resource management, and a cleaner API**.
