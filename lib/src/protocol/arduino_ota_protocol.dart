@@ -108,10 +108,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
               '  If they match → device hashed a different flash region/content '
               '(or transfer corruption).',
             );
-            _failUpdate(
-              'Post-flash SHA-256 mismatch',
-              DeviceHashMismatchException(),
-            );
+            _failUpdateWithException(DeviceHashMismatchException());
             return;
           case 0xF2:
             otaLogger.i('New bin file installation begins on ESP32');
@@ -231,6 +228,16 @@ class ArduinoOtaProtocol implements OtaProtocol {
     final Completer<bool>? completer = _updateCompleter;
     if (completer != null && !completer.isCompleted) {
       completer.complete(succeeded);
+    }
+  }
+
+  /// Completes [performUpdate] with [error] so [OtaClient] can emit
+  /// [failedValue] and rethrow typed integrity failures to the caller.
+  void _failUpdateWithException(Object error) {
+    otaLogger.e('Arduino OTA failed', error: error);
+    final Completer<bool>? completer = _updateCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.completeError(error);
     }
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -202,7 +203,8 @@ void main() {
       },
     );
 
-    test('fails on post-flash hash mismatch opcode', () async {
+    test('throws DeviceHashMismatchException on post-flash hash mismatch',
+        () async {
       final FakeOtaTransport transport = FakeOtaTransport();
       final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
         integrity: FirmwareIntegrityConfig(
@@ -221,8 +223,48 @@ void main() {
 
       await Future<void>.delayed(Duration.zero);
       transport.emitInbound(<int>[arduinoHashMismatchOpcode]);
-      expect(await result, isFalse);
+      await expectLater(result, throwsA(isA<DeviceHashMismatchException>()));
     });
+
+    test(
+      'OtaClient rethrows DeviceHashMismatchException after failedValue',
+      () async {
+        final FakeOtaTransport transport = FakeOtaTransport();
+        final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
+          integrity: FirmwareIntegrityConfig(
+            features: {IntegrityFeature.shaAfterFlash},
+            expectedSha256Bytes: List<int>.filled(32, 1),
+          ),
+        );
+        final OtaClient client = OtaClient(
+          transport: transport,
+          protocol: protocol,
+          source: FakeFirmwareSource(Uint8List.fromList(<int>[1, 2, 3])),
+        );
+
+        final Future<List<int>> events = client.percentageStream.toList();
+
+        // Drive the Arduino notify path after performUpdate starts listening.
+        unawaited(
+          Future<void>.delayed(Duration.zero, () {
+            transport.emitInbound(<int>[arduinoHashMismatchOpcode]);
+          }),
+        );
+
+        await expectLater(
+          client.run(
+            mtuSize: 32,
+            integrity: FirmwareIntegrityConfig(
+              features: {IntegrityFeature.shaAfterFlash},
+              expectedSha256Bytes: List<int>.filled(32, 1),
+            ),
+          ),
+          throwsA(isA<DeviceHashMismatchException>()),
+        );
+
+        expect(await events, contains(failedValue));
+      },
+    );
   });
 
   group('EspIdfOtaProtocol integrity', () {
@@ -303,7 +345,8 @@ void main() {
       ]);
     });
 
-    test('returns false on post-flash hash mismatch status', () async {
+    test('throws DeviceHashMismatchException on post-flash hash mismatch',
+        () async {
       final FakeOtaTransport transport = FakeOtaTransport(
         controlReads: <List<int>>[
           <int>[espIdfControlAck],
@@ -312,22 +355,60 @@ void main() {
         ],
       );
 
-      final bool ok =
-          await EspIdfOtaProtocol(
+      await expectLater(
+        EspIdfOtaProtocol(
+          integrity: FirmwareIntegrityConfig(
+            features: {IntegrityFeature.shaAfterFlash},
+            expectedSha256Bytes: List<int>.filled(32, 7),
+          ),
+        ).performUpdate(
+          transport: transport,
+          firmware: Uint8List.fromList(<int>[1, 2, 3, 4]),
+          mtuSize: 4,
+          isCancelRequested: () => false,
+          onProgress: (_) {},
+        ),
+        throwsA(isA<DeviceHashMismatchException>()),
+      );
+    });
+
+    test(
+      'OtaClient rethrows DeviceHashMismatchException after failedValue',
+      () async {
+        final FakeOtaTransport transport = FakeOtaTransport(
+          controlReads: <List<int>>[
+            <int>[espIdfControlAck],
+            <int>[espIdfControlAck],
+            <int>[espIdfStatusHashMismatch],
+          ],
+        );
+        final OtaClient client = OtaClient(
+          transport: transport,
+          protocol: EspIdfOtaProtocol(
             integrity: FirmwareIntegrityConfig(
               features: {IntegrityFeature.shaAfterFlash},
               expectedSha256Bytes: List<int>.filled(32, 7),
             ),
-          ).performUpdate(
-            transport: transport,
-            firmware: Uint8List.fromList(<int>[1, 2, 3, 4]),
-            mtuSize: 4,
-            isCancelRequested: () => false,
-            onProgress: (_) {},
-          );
+          ),
+          source: FakeFirmwareSource(Uint8List.fromList(<int>[1, 2, 3, 4])),
+        );
 
-      expect(ok, isFalse);
-    });
+        final Future<List<int>> events = client.percentageStream.toList();
+
+        await expectLater(
+          client.run(
+            mtuSize: 4,
+            integrity: FirmwareIntegrityConfig(
+              features: {IntegrityFeature.shaAfterFlash},
+              expectedSha256Bytes: List<int>.filled(32, 7),
+            ),
+          ),
+          throwsA(isA<DeviceHashMismatchException>()),
+        );
+
+        expect(await events, contains(failedValue));
+      },
+    );
   });
 
   group('firmware hash helpers', () {

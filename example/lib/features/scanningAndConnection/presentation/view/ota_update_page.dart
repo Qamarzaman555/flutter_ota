@@ -238,11 +238,11 @@ class _NewOTAUpdatePageState extends State<NewOTAUpdatePage> {
         mtuSize: OtaBleConstants.espidfMtuSize,
         integrity: FirmwareIntegrityConfig(
           features: {
-            IntegrityFeature.shaBeforeTransfer,
+            // IntegrityFeature.shaBeforeTransfer,
             IntegrityFeature.shaAfterFlash,
           },
           expectedSha256Hex:
-              '737c55dada54fcbea9dd1b032ca450df1e6a21cdf3bc27045210b8d8622848cb',
+              '5e00d6e700e91e3598277b5b78fb32036d4098bbcad25ee566752a43a7f38f62',
         ),
       );
     } on OtaException catch (e) {

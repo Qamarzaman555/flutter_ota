@@ -51,7 +51,10 @@ class OtaClient {
   ///
   /// Pass [integrity] to optionally verify the binary before transfer
   /// ([IntegrityFeature.shaBeforeTransfer]). Post-flash SHA is handled by the
-  /// [OtaProtocol] when configured on that protocol instance.
+  /// [OtaProtocol] when configured on that protocol instance; device-reported
+  /// mismatches surface as [DeviceHashMismatchException] (after
+  /// [failedValue] is emitted), matching pre-transfer
+  /// [FirmwareHashMismatchException] handling.
   Future<void> run({
     required int mtuSize,
     FirmwareIntegrityConfig integrity = FirmwareIntegrityConfig.none,
@@ -111,7 +114,9 @@ class OtaClient {
       _firmwareUpdateSucceeded = succeeded;
       _completeUpdate(succeeded ? 100 : failedValue);
     } catch (e) {
-      rethrowError = e is FirmwareHashMismatchException ? e : null;
+      // Integrity failures: emit failedValue for UI, then rethrow so callers
+      // can branch on type (pre-transfer vs device post-flash mismatch).
+      rethrowError = e is FirmwareIntegrityException ? e : null;
       _handleUpdateError(e);
     } finally {
       await _transport.dispose();

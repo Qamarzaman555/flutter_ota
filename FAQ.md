@@ -54,8 +54,9 @@ They are intentional stream sentinels:
 | `-1` | `cancelledValue` | Caller cancelled |
 | `-2` | `failedValue` | BLE / transfer failure (emitted instead of crashing) |
 
-Setup failures (empty firmware, bad download, invalid `mtuSize`) still **throw**
-typed exceptions from `updateFirmware`.
+Integrity mismatches (`FirmwareHashMismatchException`,
+`DeviceHashMismatchException`) also emit `failedValue`, then rethrow so you can
+catch them by type after `await updateFirmware(...)`.
 
 ## Which platforms are supported?
 

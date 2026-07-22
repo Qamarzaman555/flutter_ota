@@ -4,6 +4,7 @@ import 'package:flutter_ota/src/core/firmware_chunker.dart';
 import 'package:flutter_ota/src/core/firmware_hash.dart';
 import 'package:flutter_ota/src/core/ota_protocol.dart';
 import 'package:flutter_ota/src/core/ota_transport.dart';
+import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
 import 'package:flutter_ota/src/logging/ota_logger.dart';
 import 'package:flutter_ota/src/models/constants.dart';
 import 'package:flutter_ota/src/models/firmware_integrity.dart';
@@ -131,7 +132,7 @@ class EspIdfOtaProtocol implements OtaProtocol {
         '  If they match → device hashed a different flash region/content '
         '(or transfer corruption).',
       );
-      return false;
+      throw DeviceHashMismatchException();
     }
 
     otaLogger.e('OTA update failed (unexpected status ${value[0]})');

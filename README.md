@@ -324,10 +324,11 @@ The package distinguishes two kinds of failures:
   `failedValue` (`-2`) rather than thrown, so a mid-transfer drop does not crash
   your app. Handle these via the stream as shown above.
 
-* **Setup / firmware-loading errors** (e.g. an empty file, an empty download, or
-  a non-200 HTTP response) are thrown as typed exceptions before the OTA writes
-  begin, so the device is never left mid-update with nothing to flash. Wrap
-  `updateFirmware` in a `try/catch` to handle them:
+* **Setup / integrity errors** (empty firmware, download failure, pre-transfer
+  SHA mismatch, or device-reported post-flash SHA mismatch) are thrown as typed
+  exceptions. Integrity mismatches also emit `failedValue` first so UI listeners
+  still update, then rethrow so you can branch on type. Wrap `updateFirmware` in
+  a `try/catch`:
 
 ```dart
 try {
@@ -343,6 +344,9 @@ try {
   print(e.message);
 } on FirmwareHashMismatchException catch (e) {
   // Pre-transfer SHA-256 did not match the expected digest.
+  print(e.message);
+} on DeviceHashMismatchException catch (e) {
+  // Device rejected the flash after post-flash SHA-256 verification.
   print(e.message);
 } on FirmwareDownloadException catch (e) {
   // HTTP download failed; e.statusCode is set for non-200 responses.
@@ -360,6 +364,9 @@ The exception types are:
 | `OtaException` | Base class for all OTA errors thrown by the package. |
 | `EmptyFirmwareException` | The firmware source yields no data (empty asset/file, empty download, or no file selected). |
 | `FirmwareDownloadException` | The HTTP download fails (non-200 status, timeout, or network error). Carries an optional `statusCode`. |
+| `FirmwareIntegrityException` | Base class for integrity verification failures. |
+| `FirmwareHashMismatchException` | App-side SHA-256 mismatch (`shaBeforeTransfer`). |
+| `DeviceHashMismatchException` | Device reported post-flash SHA-256 mismatch (`shaAfterFlash`; Arduino `0x0E` / ESP-IDF status `6`). |
 
 ## Releasing resources
 

@@ -488,10 +488,12 @@ The method signature and the meaning of each parameter:
 | `mtuSize` | Optional (default `500`) | Bytes per BLE packet. 1–512 for ESP-IDF, 1–510 for Arduino. |
 | `integrity` | Optional (default none) | Composable SHA-256 features; enable only what firmware supports. |
 
-### Step 8 — Handle setup/loading errors
+### Step 8 — Handle setup / integrity errors
 
-Wrap the call in a `try/catch` to handle setup-time failures (these are thrown,
-unlike mid-transfer BLE errors which arrive on the stream):
+Wrap the call in a `try/catch` for setup failures and integrity mismatches
+(these are thrown; mid-transfer BLE drops still arrive only on the stream as
+`failedValue`). Post-flash device hash failures emit `failedValue` **and**
+rethrow `DeviceHashMismatchException`:
 
 ```dart
 try {
@@ -503,6 +505,10 @@ try {
   );
 } on EmptyFirmwareException catch (e) {
   print(e.message); // empty file / empty download / nothing picked
+} on FirmwareHashMismatchException catch (e) {
+  print(e.message); // app-side pre-transfer SHA mismatch
+} on DeviceHashMismatchException catch (e) {
+  print(e.message); // device post-flash SHA mismatch
 } on FirmwareDownloadException catch (e) {
   print('Download failed (${e.statusCode}): ${e.message}');
 } on OtaException catch (e) {

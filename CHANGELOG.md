@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both, or neither. Default remains no integrity (unchanged wire format).
 - Typed integrity exceptions: `FirmwareIntegrityException`,
   `FirmwareHashMismatchException`, `DeviceHashMismatchException`.
+  Pre-transfer and device post-flash mismatches both emit `failedValue` on
+  `percentageStream` and then rethrow so callers can catch by type.
 - Unit tests for config validation, pre-transfer SHA, and protocol
   integrity paths.
 - Typed exception hierarchy for OTA failures — `OtaException` (base),
@@ -49,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ESP-IDF and Arduino.
 
 ### Fixed
+- `DeviceHashMismatchException` is now thrown (and rethrown by `OtaClient`
+  after `failedValue`) when the device reports a post-flash SHA-256 mismatch
+  (Arduino `0x0E` / ESP-IDF status `6`), matching pre-transfer
+  `FirmwareHashMismatchException` handling. Previously the exception was only
+  constructed for logging on the Arduino path, and the ESP-IDF path returned
+  `false` with no typed error.
 - Arduino updates now use the caller-supplied `mtuSize`. Previously it was
   ignored in favour of the device-negotiated MTU and hardcoded values (`200`,
   `400`), so the requested chunk size never reached the device.
