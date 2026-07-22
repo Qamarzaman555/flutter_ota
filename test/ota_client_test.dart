@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter_ota/src/core/firmware_source.dart';
 import 'package:flutter_ota/src/core/ota_client.dart';
 import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
 import 'package:flutter_ota/src/models/constants.dart';
@@ -23,6 +25,37 @@ void main() {
       await expectLater(client.run(mtuSize: 0), throwsA(isA<OtaException>()));
       await expectLater(client.run(mtuSize: 513), throwsA(isA<OtaException>()));
       expect(protocol.performCalled, isFalse);
+    });
+
+    test('rejects two concurrent run() calls', () async {
+      final Completer<Uint8List> loadGate = Completer<Uint8List>();
+      final FakeProtocol protocol = FakeProtocol(result: true);
+      final OtaClient client = OtaClient(
+        transport: FakeOtaTransport(),
+        protocol: protocol,
+        source: _DeferredFirmwareSource(loadGate.future),
+      );
+
+      // First run stays in-flight at source.load(); second must hit the guard.
+      final Future<void> first = client.run(mtuSize: 128);
+      final Future<void> second = client.run(mtuSize: 128);
+
+      expect(client.isUpdating, isTrue);
+      await expectLater(
+        second,
+        throwsA(
+          isA<OtaException>().having(
+            (OtaException e) => e.message,
+            'message',
+            contains('already in progress'),
+          ),
+        ),
+      );
+
+      loadGate.complete(firmware());
+      await first;
+      expect(protocol.performCalled, isTrue);
+      expect(client.isUpdating, isFalse);
     });
 
     test('emits 100 and reports success on a successful update', () async {
@@ -96,4 +129,15 @@ void main() {
       expect(client.isUpdating, isFalse);
     });
   });
+}
+
+/// [FirmwareSource] that waits on [future] so concurrent [OtaClient.run] calls
+/// can be asserted while the first update is still in flight.
+class _DeferredFirmwareSource implements FirmwareSource {
+  _DeferredFirmwareSource(this._future);
+
+  final Future<Uint8List> _future;
+
+  @override
+  Future<Uint8List> load() => _future;
 }

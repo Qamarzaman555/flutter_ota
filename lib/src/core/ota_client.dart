@@ -68,6 +68,14 @@ class OtaClient {
       );
     }
 
+    // Check-and-set before any await so concurrent run() calls cannot both
+    // proceed and interleave writes on the shared transport.
+    if (_isUpdating) {
+      throw OtaException(
+        'An OTA update is already in progress. Wait for it to finish or call '
+        'cancel() before starting another.',
+      );
+    }
     _cancelRequested = false;
     _firmwareUpdateSucceeded = false;
     _isUpdating = true;

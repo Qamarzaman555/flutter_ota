@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ESP-IDF and Arduino.
 
 ### Fixed
+- `OtaClient.run()` now rejects concurrent calls with `OtaException` (same
+  re-entrancy guard as `Esp32OtaPackage.updateFirmware`), so custom
+  transport/protocol users cannot interleave writes on a shared transport.
 - `DeviceHashMismatchException` is now thrown (and rethrown by `OtaClient`
   after `failedValue`) when the device reports a post-flash SHA-256 mismatch
   (Arduino `0x0E` / ESP-IDF status `6`), matching pre-transfer

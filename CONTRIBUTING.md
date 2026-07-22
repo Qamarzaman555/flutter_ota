@@ -15,19 +15,25 @@ how to report issues, propose changes, and get a pull request ready for review.
 ## Development setup
 
 1. Fork and clone the repository.
-2. From the repo root:
+2. Use a Flutter install whose bundled Dart is **≥ 3.8.0** (this package requires
+   `sdk: '>=3.8.0 <4.0.0'`). Always run `flutter pub get`, `dart format`,
+   `flutter analyze`, and `flutter test` via that Flutter SDK on your `PATH` —
+   **not** a standalone Homebrew/`dart` install. Older system Darts (e.g. 3.3)
+   apply different formatter rules and can produce large, spurious `dart format`
+   diffs across the repo.
+3. From the repo root:
 
 ```bash
 flutter pub get
 cd example && flutter pub get && cd ..
 ```
 
-3. Prefer a physical Android or iOS device when exercising BLE; simulators
+4. Prefer a physical Android or iOS device when exercising BLE; simulators
    usually cannot talk to an ESP32.
 
 ## Checks before you open a PR
 
-CI runs the same commands locally:
+CI runs the same commands locally (again: Flutter’s Dart, not a separate one):
 
 ```bash
 dart format --output=none --set-exit-if-changed .
@@ -39,7 +45,9 @@ flutter analyze --fatal-infos
 flutter test
 ```
 
-Fix format/analyze/test failures before requesting review.
+Confirm with `which dart` / `dart --version` that you are on the Flutter-bundled
+SDK (≥ 3.8.0) before formatting. Fix format/analyze/test failures before
+requesting review.
 
 ## Pull request guidelines
 
