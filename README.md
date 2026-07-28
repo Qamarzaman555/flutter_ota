@@ -2,7 +2,7 @@
 
 ### Ship firmware. Skip the cable.
 
-Reliable Over-The-Air updates for ESP32-class devices — from a Flutter app,
+Reliable Over-The-Air updates for ESP32-class devices , from a Flutter app,
 over Bluetooth Low Energy.
 
 **Current version:** `1.0.0` · **Publisher:** [sparkleo.io](https://pub.dev/publishers/sparkleo.io)
@@ -11,7 +11,7 @@ over Bluetooth Low Energy.
 
 **flutter_ota** is a Flutter library for Over-The-Air (OTA) firmware updates on
 ESP32-class Bluetooth Low Energy (BLE) devices. It targets Espressif SoCs and
-compatible modules — including **ESP32**, **ESP32-S2/S3**, and **ESP32-C3** —
+compatible modules , including **ESP32**, **ESP32-S2/S3**, and **ESP32-C3** ,
 that implement **ESP-IDF** or **Arduino** OTA firmware on the device side.
 
 Use it when your mobile or desktop Flutter app needs to push a new firmware
@@ -42,7 +42,7 @@ releases, extending the same OTA workflow beyond BLE.
 * Typed errors (`OtaException` and friends) and early validation of empty
   firmware, so failures surface clearly instead of corrupting an update.
 * Optional firmware integrity: SHA-256 before transfer and post-flash SHA-256
-  — enable any combination your device supports (or none).
+  , enable any combination your device supports (or none).
 * Self-disposing: resources are released automatically when an update reaches a
   terminal state.
 
@@ -172,7 +172,7 @@ Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, writeCharacte
    `FirmwareType.filepicker`):
 
 ```dart
-// ESP-IDF — firmware from assets
+// ESP-IDF , firmware from assets
 await otaPackage.updateFirmware(
   device,
   UpdateType.espidf,
@@ -181,7 +181,7 @@ await otaPackage.updateFirmware(
   mtuSize: 500, // optional (default 500)
 );
 
-// Arduino — firmware from URL
+// Arduino , firmware from URL
 await otaPackage.updateFirmware(
   device,
   UpdateType.arduino,
@@ -190,14 +190,14 @@ await otaPackage.updateFirmware(
   mtuSize: 500, // optional (default 500)
 );
 
-// Arduino — firmware from file picker (no uri needed)
+// Arduino , firmware from file picker (no uri needed)
 await otaPackage.updateFirmware(
   device,
   UpdateType.arduino,
   FirmwareType.filepicker,
 );
 
-// Optional integrity — enable only what your firmware supports:
+// Optional integrity , enable only what your firmware supports:
 await otaPackage.updateFirmware(
   device,
   UpdateType.arduino,
@@ -223,7 +223,7 @@ await otaPackage.updateFirmware(
 
 `mtuSize` is the number of **firmware payload bytes** per BLE transfer unit. It is
 **not** the same as the ATT MTU negotiated by
-`BluetoothDevice.requestMtu()` — the package does **not** call `requestMtu()`
+`BluetoothDevice.requestMtu()` , the package does **not** call `requestMtu()`
 for you. Your app must negotiate BLE MTU before starting an update, and the
 `mtuSize` you pass to `updateFirmware` must fit within what was actually
 negotiated.
@@ -267,7 +267,7 @@ An out-of-range value throws an `OtaException` before any BLE writes begin.
 ### Firmware integrity (optional)
 
 Integrity is **off by default** so existing firmware keeps working. Features are
-independent — combine any subset your device supports:
+independent , combine any subset your device supports:
 
 | Feature | Where it runs | Device support needed? |
 | --- | --- | --- |
@@ -290,7 +290,7 @@ FirmwareIntegrityConfig(
 
 **ESP-IDF PostSHA:** after all image chunks, control `0x07` (`SET_HASH`) +
 32-byte digest on data, read `0x02` ACK, then control `0x04` DONE. Do not use
-control `0x02` for the hash — that opcode is device→phone ACK. Status `6` =
+control `0x02` for the hash , that opcode is device→phone ACK. Status `6` =
 hash mismatch / failure. **Arduino:** `0xF9` flags, `0xFA` + 32-byte digest,
 mismatch `0x0E`.
 
@@ -418,6 +418,10 @@ The article (https://michaelangerer.dev/esp32/ble/ota/2021/06/08/esp32-ota-part-
 ### Arduino IDE OTA Firmware
 
 The GitHub repository (https://github.com/fbiego/ESP32_BLE_OTA_Arduino) provides firmware suitable for integration utilizing the Arduino IDE framework.
+
+## Contributors
+
+We thank [fugidev](https://github.com/fugidev) for contributions to the `updateFirmware` API, including typed update and firmware options, a unified `uri` parameter, and MTU-aware packet transfer.
 
 ## Conclusion
 
