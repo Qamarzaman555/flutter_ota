@@ -1,8 +1,37 @@
-**flutter_ota**
+# flutter_ota
 
-Current version: **1.0.0**
+### Ship firmware. Skip the cable.
 
-This package provides functionalities for Over-The-Air (OTA) updates for ESP32 devices using Flutter applications.
+Reliable Over-The-Air updates for ESP32-class devices — from a Flutter app,
+over Bluetooth Low Energy.
+
+**Current version:** `1.0.0` · **Publisher:** [sparkleo.io](https://pub.dev/publishers/sparkleo.io)
+
+---
+
+**flutter_ota** is a Flutter library for Over-The-Air (OTA) firmware updates on
+ESP32-class Bluetooth Low Energy (BLE) devices. It targets Espressif SoCs and
+compatible modules — including **ESP32**, **ESP32-S2/S3**, and **ESP32-C3** —
+that implement **ESP-IDF** or **Arduino** OTA firmware on the device side.
+
+Use it when your mobile or desktop Flutter app needs to push a new firmware
+image to a nearby ESP32 without a wired flash tool: the package loads the
+binary, runs the protocol handshake, streams progress, and completes (or fails)
+with typed errors your UI can handle cleanly.
+
+| | |
+| --- | --- |
+| 📡 **Transport** | Bluetooth Low Energy (BLE) |
+| 🧩 **Protocols** | ESP-IDF and Arduino OTA handshakes |
+| 📦 **Firmware sources** | Bundled assets, local file picker, or remote URL |
+| 🔒 **Integrity** | Optional SHA-256 before transfer and after flash |
+| 📈 **Progress** | Live percentage stream with clear terminal states |
+| 🛠️ **Roadmap** | Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)** |
+
+Support for **MQTT** and **Wi-Fi (HTTP/HTTPS)** delivery is planned for future
+releases, extending the same OTA workflow beyond BLE.
+
+---
 
 **Features**
 

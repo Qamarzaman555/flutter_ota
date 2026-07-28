@@ -1,5 +1,5 @@
 name: flutter_ota
-description: A Flutter package for OTA updating firmware of ESP32 using Bluetooth Low Energy (BLE).
+description: Ship firmware without a cable — OTA updates for ESP32-class BLE devices (ESP-IDF/Arduino). MQTT and Wi-Fi HTTP/HTTPS support are planned.
 version: 1.0.0
 homepage: https://github.com/sparkleo-io/flutter_ota
 repository: https://github.com/sparkleo-io/flutter_ota
