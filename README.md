@@ -19,14 +19,12 @@ image to a nearby ESP32 without a wired flash tool: the package loads the
 binary, runs the protocol handshake, streams progress, and completes (or fails)
 with typed errors your UI can handle cleanly.
 
-| | |
-| --- | --- |
-| 📡 **Transport** | Bluetooth Low Energy (BLE) |
-| 🧩 **Protocols** | ESP-IDF and Arduino OTA handshakes |
-| 📦 **Firmware sources** | Bundled assets, local file picker, or remote URL |
-| 🔒 **Integrity** | Optional SHA-256 before transfer and after flash |
-| 📈 **Progress** | Live percentage stream with clear terminal states |
-| 🛠️ **Roadmap** | Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)** |
+* 📡 **Transport** — Bluetooth Low Energy (BLE)
+* 🧩 **Protocols** — ESP-IDF and Arduino OTA handshakes
+* 📦 **Firmware sources** — Bundled assets, local file picker, or remote URL
+* 🔒 **Integrity** — Optional SHA-256 before transfer and after flash
+* 📈 **Progress** — Live percentage stream with clear terminal states
+* 🛠️ **Roadmap** — Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)**
 
 Support for **MQTT** and **Wi-Fi (HTTP/HTTPS)** delivery is planned for future
 releases, extending the same OTA workflow beyond BLE.
