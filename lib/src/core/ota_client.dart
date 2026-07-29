@@ -164,11 +164,11 @@ class OtaClient {
   }
 
   void _handleUpdateError(Object error) {
-    otaLogger.e(
-      'OTA update aborted: Device either returned an error or did not acknowledge the operation. '
-      'Some devices may not support acknowledgement.'
-      'Please ensure the device firmware supports proper OTA acknowledgement flow.',
-    );
+    // otaLogger.e(
+    //   'OTA update aborted: Device either returned an error or did not acknowledge the operation. '
+    //   'Some devices may not support acknowledgement.'
+    //   'Please ensure the device firmware supports proper OTA acknowledgement flow.',
+    // );
     otaLogger.e('OTA update aborted', error: error);
     _firmwareUpdateSucceeded = false;
     _completeUpdate(_cancelRequested ? cancelledValue : failedValue);

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_ota/flutter_ota.dart';
 import 'package:get/get.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/ota_update_controller.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/view/widgets/ota_options_form.dart';
@@ -37,7 +36,7 @@ class NewOTAUpdatePage extends GetView<OtaUpdateController> {
                 const SizedBox(height: 28),
                 Obx(
                   () => OtaOptionsForm(
-                    updateType: UpdateType.espidf,
+                    updateType: controller.updateType.value,
                     firmwareType: controller.firmwareType.value,
                     integrityMode: controller.integrityMode.value,
                     urlController: controller.urlController,

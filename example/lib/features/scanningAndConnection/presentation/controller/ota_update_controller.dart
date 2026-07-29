@@ -176,43 +176,30 @@ class OtaUpdateController extends GetxController {
       final int mtuSize = updateType.value == UpdateType.arduino
           ? OtaBleConstants.arduinoMtuSize
           : OtaBleConstants.espidfMtuSize;
-      // await otaPackage.updateFirmware(
-      //   currentDevice,
-      //   updateType.value,
-      //   firmwareType.value,
-      //   uri: firmwareType.value == FirmwareType.url
-      //       ? urlController.text.trim()
-      //       : null,
-      //   mtuSize: mtuSize,
-      //   integrity: integrityMode.value.toConfig(shaController.text),
-      // );
       await otaPackage.updateFirmware(
         currentDevice,
-        UpdateType.arduino,
-        FirmwareType.filepicker,
+        updateType.value,
+        firmwareType.value,
+        uri: firmwareType.value == FirmwareType.url
+            ? urlController.text.trim()
+            : null,
         mtuSize: mtuSize,
-        integrity: FirmwareIntegrityConfig(
-          features: {
-            IntegrityFeature.shaBeforeTransfer,
-            IntegrityFeature.shaAfterFlash,
-          },
-          expectedSha256Hex:
-              '93e19499a818f7d3c7886bb68e8dafa62e18442461bc65e9f5825943a2335000',
-        ),
+        integrity: integrityMode.value.toConfig(shaController.text),
       );
-
-      /*
-      await otaPackage.updateFirmware(
-      currentDevice,
-      UpdateType.arduino,
-      FirmwareType.filepicker, // or url / assets
-      mtuSize: 400,
-      integrity: FirmwareIntegrityConfig(
-        features: {IntegrityFeature.shaAfterFlash},
-        expectedSha256Hex: '...', // 64 hex chars, or omit to hash the loaded bin
-      ),
-      );
-       */
+      // await otaPackage.updateFirmware(
+      //   currentDevice,
+      //   UpdateType.espidf,
+      //   FirmwareType.filepicker,
+      //   mtuSize: mtuSize,
+      //   integrity: FirmwareIntegrityConfig(
+      //     features: {
+      //       IntegrityFeature.shaBeforeTransfer,
+      //       IntegrityFeature.shaAfterFlash,
+      //     },
+      //     expectedSha256Hex:
+      //         '5e00d6e700e91e3598277b5b78fb32036d4098bbcad25ee566752a43a7f38f62',
+      //   ),
+      // );
     } on OtaException catch (e) {
       debugPrint('OTA failed: $e');
       dismissProgressDialog(toast: e.message);
