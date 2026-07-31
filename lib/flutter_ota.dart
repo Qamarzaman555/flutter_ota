@@ -9,6 +9,7 @@ export 'src/esp32_ota_package.dart';
 export 'src/exceptions/ota_exceptions.dart';
 export 'src/firmware/asset_firmware_source.dart';
 export 'src/firmware/file_picker_firmware_source.dart';
+export 'src/firmware/firmware_image.dart';
 export 'src/firmware/url_firmware_source.dart';
 export 'src/logging/ota_logger.dart' show otaVerboseLogging;
 export 'src/models/constants.dart';

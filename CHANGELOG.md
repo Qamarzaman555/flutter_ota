@@ -7,22 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- ESP-IDF transfer progress no longer reaches `100` before the device ACKs
-  FINISH (status `5`). Mid-transfer progress is capped at `99`; terminal `100`
-  is emitted only after a successful device acknowledgement. The example app
-  also treats success as `firmwareUpdate` after ACK, not progress alone.
-- URL firmware downloads that return HTML (e.g. a Google Drive `/view` share
-  page) are rejected with a clear error instead of being hashed as firmware.
-- `FirmwareDownloadException` and `EmptyFirmwareException` are rethrown after
-  emitting `failedValue`, so UIs can show the real failure reason (not only a
-  generic “OTA failed” toast).
-
-## [1.0.0] - 2026-06-08
+## [1.0.0] - 2026-07-31
 
 ### Added
 
+- `validateFirmwareImage` / `isSupportedFirmwareImage` — pre-check that a path,
+  URL, or filename is `.bin` or `.img` before starting OTA.
+- `validateFirmwareSource` — for URLs, downloads then validates the payload
+  (rejects HTML; checks `.bin`/`.img` when a filename is known). Assets and
+  file picker still validate the path/name up front.
+- Shared `downloadAndValidateFirmware` / `validateFirmwarePayload` replace the
+  URL-only Google Drive HTML helper.
+- `UnsupportedFirmwareImageException` when the image type is not supported.
+- File picker restricted to `.bin` / `.img` (`FileType.custom`).
 - GitHub Actions CI workflow that runs `dart format`, `flutter analyze`, and
   `flutter test` (package + example) on pushes and pull requests.
 - Optional, composable firmware integrity via `FirmwareIntegrityConfig` /
@@ -67,6 +64,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- ESP-IDF transfer progress no longer reaches `100` before the device ACKs
+  FINISH (status `5`). Mid-transfer progress is capped at `99`; terminal `100`
+  is emitted only after a successful device acknowledgement. The example app
+  also treats success as `firmwareUpdate` after ACK, not progress alone.
+- URL firmware downloads that return HTML (e.g. a Google Drive `/view` share
+  page) are rejected with a clear error instead of being hashed as firmware.
+- `FirmwareDownloadException` and `EmptyFirmwareException` are rethrown after
+  emitting `failedValue`, so UIs can show the real failure reason (not only a
+  generic “OTA failed” toast).
 - `OtaClient.run()` now rejects concurrent calls with `OtaException` (same
   re-entrancy guard as `Esp32OtaPackage.updateFirmware`), so custom
   transport/protocol users cannot interleave writes on a shared transport.

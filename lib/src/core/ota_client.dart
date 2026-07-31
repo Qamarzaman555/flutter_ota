@@ -125,10 +125,11 @@ class OtaClient {
     } catch (e) {
       // Setup / integrity failures: emit failedValue for UI, then rethrow so
       // callers can show the real reason (download HTML, empty binary, SHA
-      // mismatch). Mid-transfer BLE faults stay stream-only (failedValue).
+      // mismatch, unsupported image). Mid-transfer BLE faults stay stream-only.
       rethrowError = e is FirmwareIntegrityException ||
               e is FirmwareDownloadException ||
-              e is EmptyFirmwareException
+              e is EmptyFirmwareException ||
+              e is UnsupportedFirmwareImageException
           ? e
           : null;
       _handleUpdateError(e);

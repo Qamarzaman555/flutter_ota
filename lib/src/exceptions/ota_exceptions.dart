@@ -69,6 +69,14 @@ class FirmwareHashMismatchException extends FirmwareIntegrityException {
   final String actualHex;
 }
 
+/// Thrown when a firmware path, URL, or picked file is not a supported image
+/// type (only `.bin` and `.img` are accepted).
+class UnsupportedFirmwareImageException extends OtaException {
+  UnsupportedFirmwareImageException([
+    super.message = 'Firmware must be a .bin or .img file.',
+  ]);
+}
+
 /// Thrown when the device reports a post-flash SHA-256 mismatch without
 /// returning the computed digest bytes.
 class DeviceHashMismatchException extends FirmwareIntegrityException {
@@ -78,3 +86,4 @@ class DeviceHashMismatchException extends FirmwareIntegrityException {
         'The update will not be marked successful.',
   ]);
 }
+

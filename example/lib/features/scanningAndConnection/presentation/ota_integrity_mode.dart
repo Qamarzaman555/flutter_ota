@@ -36,8 +36,14 @@ String? validateOtaForm({
   required OtaIntegrityMode integrityMode,
   required String sha256Hex,
 }) {
-  if (firmwareType == FirmwareType.url && url.trim().isEmpty) {
-    return 'Enter a firmware URL';
+  if (firmwareType == FirmwareType.url) {
+    if (url.trim().isEmpty) return 'Enter a firmware URL';
+  } else if (firmwareType == FirmwareType.assets) {
+    final String trimmed = url.trim();
+    if (trimmed.isEmpty) return 'Enter an asset path';
+    if (!isSupportedFirmwareImage(trimmed)) {
+      return 'Asset path must end with .bin or .img';
+    }
   }
   if (integrityMode.needsSha && sha256Hex.trim().isEmpty) {
     return 'Enter the expected SHA-256 hex digest';

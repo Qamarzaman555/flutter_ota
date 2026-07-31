@@ -633,7 +633,7 @@ sequenceDiagram
 
 ## 5. Changelog — what's new in 1.0.0
 
-`1.0.0` (2026-06-08) is a substantial release focused on **type safety, correct
+`1.0.0` (2026-07-31) is a substantial release focused on **type safety, correct
 chunking, resource management, and a cleaner API**.
 
 ### Added

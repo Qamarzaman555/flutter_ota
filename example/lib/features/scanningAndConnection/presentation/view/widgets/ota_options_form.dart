@@ -15,6 +15,7 @@ class OtaOptionsForm extends StatelessWidget {
     required this.onUpdateTypeChanged,
     required this.onFirmwareTypeChanged,
     required this.onIntegrityModeChanged,
+    required this.onValidateImage,
   });
 
   final UpdateType updateType;
@@ -25,6 +26,7 @@ class OtaOptionsForm extends StatelessWidget {
   final ValueChanged<UpdateType> onUpdateTypeChanged;
   final ValueChanged<FirmwareType> onFirmwareTypeChanged;
   final ValueChanged<OtaIntegrityMode> onIntegrityModeChanged;
+  final VoidCallback onValidateImage;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +60,7 @@ class OtaOptionsForm extends StatelessWidget {
           segments: const [
             ButtonSegment(
               value: FirmwareType.filepicker,
-              label: Text('File picker'),
+              label: Text('File'),
               icon: Icon(Icons.folder_open, size: 18),
             ),
             ButtonSegment(
@@ -72,19 +74,49 @@ class OtaOptionsForm extends StatelessWidget {
             onFirmwareTypeChanged(selection.first);
           },
         ),
-        if (firmwareType == FirmwareType.url) ...[
+        if (firmwareType == FirmwareType.url ||
+            firmwareType == FirmwareType.assets) ...[
           const SizedBox(height: 12),
           TextField(
             controller: urlController,
-            keyboardType: TextInputType.url,
+            keyboardType: firmwareType == FirmwareType.url
+                ? TextInputType.url
+                : TextInputType.text,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(
-              labelText: 'Firmware URL',
-              hintText: 'https://example.com/firmware.bin',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: firmwareType == FirmwareType.url
+                  ? 'Firmware URL'
+                  : 'Asset path',
+              hintText: firmwareType == FirmwareType.url
+                  ? 'https://example.com/firmware.bin'
+                  : 'assets/firmware.bin',
+              border: const OutlineInputBorder(),
             ),
           ),
         ],
+        const SizedBox(height: 12),
+        if (firmwareType == FirmwareType.url)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              SizedBox(
+                width: 100,
+                height: 30,
+                child: OutlinedButton(
+                  onPressed: onValidateImage,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: secondaryColor,
+                    side: BorderSide(color: secondaryColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('Validate'),
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 24),
         const _SectionLabel('Integrity'),
         const SizedBox(height: 8),

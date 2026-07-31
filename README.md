@@ -162,29 +162,9 @@ Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, writeCharacte
     By checking the updateType parameter, you can adapt your OTA update logic to the specific requirements of the firmware implementation. This ensures compatibility and seamless OTA updates for different types of ESP32 firmware.
 
 - `firmwareType` (`FirmwareType` enum):
-  - `FirmwareType.assets`: For binary firmware files stored in your Flutter project assets.
-  - `FirmwareType.filepicker`: To select a binary firmware file from the device storage.
-  - `FirmwareType.url`: For downloading firmware from a URL. The URL must return
-    the **raw binary** (`application/octet-stream` or similar), not an HTML page.
-
-### Firmware URL tips (Google Drive and similar)
-
-`FirmwareType.url` performs a plain HTTP GET and treats the response body as
-firmware. A Google Drive **share / view** link downloads HTML, not your `.bin`:
-
-```text
-# Wrong — browser viewer page (HTML; SHA changes every request)
-https://drive.google.com/file/d/FILE_ID/view?usp=sharing
-
-# Right — direct download
-https://drive.google.com/uc?export=download&id=FILE_ID
-```
-
-To convert a share link: copy `FILE_ID` from
-`/file/d/FILE_ID/view?...`, then use the `uc?export=download&id=` form above.
-If the response is HTML, the package throws `FirmwareDownloadException` instead
-of flashing it. See [FAQ.md](FAQ.md#why-does-the-sha-256-change-every-time-i-download-from-google-drive)
-for the full steps. Prefer S3, GitHub Releases, or your own CDN when you can.
+  - `FirmwareType.assets`: For binary firmware files stored in your Flutter project assets (path must end with `.bin` or `.img`).
+  - `FirmwareType.filepicker`: To select a `.bin` or `.img` file from device storage.
+  - `FirmwareType.url`: For downloading firmware from a URL (raw binary after download; see [URL firmware](#url-firmware) under Error handling).
 
 5. Call `updateFirmware` with the parameters that apply to your chosen
    `firmwareType` (`uri` is required for every type except
@@ -285,33 +265,52 @@ An out-of-range value throws an `OtaException` before any BLE writes begin.
 
 ### Firmware integrity (optional)
 
-Integrity is **off by default** so existing firmware keeps working. Features are
-independent , combine any subset your device supports:
+Integrity is **off by default**. Turn features on only when you have an expected
+SHA-256 for the image (and, for post-flash verify, device firmware that
+understands the hash opcodes). Features are independent — enable one, both, or
+neither.
 
-| Feature             | Where it runs                                                                           | Device support needed? |
-| ------------------- | --------------------------------------------------------------------------------------- | ---------------------- |
-| `shaBeforeTransfer` | Flutter compares loaded bytes to `expectedSha256Hex` / `expectedSha256Bytes` before BLE | No                     |
-| `shaAfterFlash`     | App sends expected SHA-256; device verifies flash before success/reboot                 | Yes                    |
+| Feature             | What it does                                                                                            | Device support? |
+| ------------------- | ------------------------------------------------------------------------------------------------------- | --------------- |
+| `shaBeforeTransfer` | After the binary is loaded (asset / file / URL), Flutter hashes it and compares to your expected digest **before any BLE write**. Stops a wrong or corrupted download early. | No              |
+| `shaAfterFlash`     | After the image is sent, the app sends the expected SHA-256 to the device; the device hashes what it flashed and ACKs success only if it matches. Catches transfer/flash corruption. | Yes             |
+
+Provide the digest with `expectedSha256Hex` (64 hex characters) or
+`expectedSha256Bytes` (32 bytes). Use the same value for both features when both
+are enabled. Compute it once from the known-good `.bin` / `.img` (e.g. on your
+server or with `shasum -a 256 firmware.bin`).
 
 ```dart
-// SHA at start only (server hash, no device changes):
+// Phone-only: reject a bad download before BLE starts
 FirmwareIntegrityConfig(
   features: {IntegrityFeature.shaBeforeTransfer},
   expectedSha256Hex: '...', // 64 hex chars
 )
 
-// SHA after flash only:
+// Device verifies flash (requires matching firmware support)
 FirmwareIntegrityConfig(
   features: {IntegrityFeature.shaAfterFlash},
   expectedSha256Hex: '...',
 )
+
+// Both
+FirmwareIntegrityConfig(
+  features: {
+    IntegrityFeature.shaBeforeTransfer,
+    IntegrityFeature.shaAfterFlash,
+  },
+  expectedSha256Hex: '...',
+)
 ```
 
-**ESP-IDF PostSHA:** after all image chunks, control `0x07` (`SET_HASH`) +
-32-byte digest on data, read `0x02` ACK, then control `0x04` DONE. Do not use
-control `0x02` for the hash , that opcode is device→phone ACK. Status `6` =
-hash mismatch / failure. **Arduino:** `0xF9` flags, `0xFA` + 32-byte digest,
-mismatch `0x0E`.
+Pass the config as `integrity:` on `updateFirmware`. Mismatches throw
+`FirmwareHashMismatchException` (pre-transfer) or `DeviceHashMismatchException`
+(post-flash) after emitting `failedValue` on the progress stream.
+
+**Wire notes (when `shaAfterFlash` is on):** ESP-IDF — after image chunks,
+control `0x07` (`SET_HASH`) + 32-byte digest on data, read `0x02` ACK, then
+`0x04` DONE (do not send `0x02` as SET_HASH; status `6` = hash mismatch).
+Arduino — `0xF9` flags, `0xFA` + 32-byte digest, mismatch `0x0E`.
 
 6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
 
@@ -399,13 +398,30 @@ try {
   // Device rejected the flash after post-flash SHA-256 verification.
   print(e.message);
 } on FirmwareDownloadException catch (e) {
-  // HTTP download failed; e.statusCode is set for non-200 responses.
+  // HTTP download failed, or the response was HTML instead of a binary.
   print('Download failed (${e.statusCode}): ${e.message}');
+} on UnsupportedFirmwareImageException catch (e) {
+  // Path/URL/file was not .bin or .img.
+  print(e.message);
 } on OtaException catch (e) {
   // Any other OTA error.
   print(e.message);
 }
 ```
+
+### URL firmware
+
+`FirmwareType.url` downloads first, then validates the payload (rejects HTML;
+checks `.bin` / `.img` when a filename is known via `Content-Disposition` or
+the URL path). Pre-check without starting OTA:
+
+```dart
+await validateFirmwareSource(FirmwareType.url, uri: url);
+```
+
+Share/view pages (e.g. Google Drive `/file/d/.../view`) return HTML and fail
+this check — use a direct-download or CDN URL. Details:
+[FAQ.md](FAQ.md#why-does-the-sha-256-change-every-time-i-download-from-google-drive).
 
 The exception types are:
 
@@ -413,7 +429,8 @@ The exception types are:
 | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `OtaException`                  | Base class for all OTA errors thrown by the package.                                                   |
 | `EmptyFirmwareException`        | The firmware source yields no data (empty asset/file, empty download, or no file selected).            |
-| `FirmwareDownloadException`     | The HTTP download fails (non-200 status, timeout, or network error). Carries an optional `statusCode`. |
+| `FirmwareDownloadException`     | The HTTP download fails (non-200 status, timeout, network error, or HTML instead of a binary).         |
+| `UnsupportedFirmwareImageException` | Path/URL/file is not `.bin` or `.img`.                                                              |
 | `FirmwareIntegrityException`    | Base class for integrity verification failures.                                                        |
 | `FirmwareHashMismatchException` | App-side SHA-256 mismatch (`shaBeforeTransfer`).                                                       |
 | `DeviceHashMismatchException`   | Device reported post-flash SHA-256 mismatch (`shaAfterFlash`; Arduino `0x0E` / ESP-IDF status `6`).    |

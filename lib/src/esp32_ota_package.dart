@@ -8,6 +8,7 @@ import 'package:flutter_ota/src/core/ota_protocol.dart';
 import 'package:flutter_ota/src/exceptions/ota_exceptions.dart';
 import 'package:flutter_ota/src/firmware/asset_firmware_source.dart';
 import 'package:flutter_ota/src/firmware/file_picker_firmware_source.dart';
+import 'package:flutter_ota/src/firmware/firmware_image.dart';
 import 'package:flutter_ota/src/firmware/url_firmware_source.dart';
 import 'package:flutter_ota/src/models/constants.dart';
 import 'package:flutter_ota/src/models/firmware_integrity.dart';
@@ -85,6 +86,14 @@ class Esp32OtaPackage implements OtaPackage {
       if (firmwareType != FirmwareType.filepicker &&
           (uri == null || uri.isEmpty)) {
         throw OtaException('uri is required for the specified firmware type.');
+      }
+
+      // Assets: check the path up front. URL: validate after download
+      // (Content-Disposition / payload), not the URL string alone.
+      if (firmwareType == FirmwareType.assets &&
+          uri != null &&
+          uri.isNotEmpty) {
+        validateFirmwareImage(uri);
       }
 
       integrity.validate();

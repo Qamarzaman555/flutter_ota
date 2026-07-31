@@ -138,6 +138,34 @@ class OtaUpdateController extends GetxController {
     }
   }
 
+  /// Pre-checks that the configured firmware source is a `.bin` / `.img`
+  /// image without starting BLE OTA (URL, asset path, or file picker).
+  Future<void> validateSelectedFirmwareImage() async {
+    try {
+      final String? uri = switch (firmwareType.value) {
+        FirmwareType.url || FirmwareType.assets => urlController.text,
+        FirmwareType.filepicker => null,
+      };
+      final bool validated = await validateFirmwareSource(
+        firmwareType.value,
+        uri: uri,
+      );
+      if (!validated) {
+        showToast('No firmware file selected');
+        return;
+      }
+      showToast('Firmware image looks valid (.bin / .img)');
+    } on UnsupportedFirmwareImageException catch (e) {
+      showToast(e.message, duration: const Duration(seconds: 4));
+    } on FirmwareDownloadException catch (e) {
+      showToast(e.message, duration: _toastDurationFor(e.message));
+    } on EmptyFirmwareException catch (e) {
+      showToast(e.message, duration: const Duration(seconds: 4));
+    } catch (e) {
+      showToast('Validation failed: $e', duration: const Duration(seconds: 4));
+    }
+  }
+
   Future<void> startOta() async {
     if (_otaInProgress) return;
 
@@ -194,9 +222,9 @@ class OtaUpdateController extends GetxController {
         currentDevice,
         updateType.value,
         firmwareType.value,
-        uri: firmwareType.value == FirmwareType.url
-            ? urlController.text.trim()
-            : null,
+        uri: firmwareType.value == FirmwareType.filepicker
+            ? null
+            : urlController.text.trim(),
         mtuSize: mtuSize,
         integrity: integrityMode.value.toConfig(shaController.text),
       );

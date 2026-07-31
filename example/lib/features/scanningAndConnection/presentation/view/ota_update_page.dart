@@ -44,6 +44,9 @@ class NewOTAUpdatePage extends GetView<OtaUpdateController> {
                     onUpdateTypeChanged: controller.setUpdateType,
                     onFirmwareTypeChanged: controller.setFirmwareType,
                     onIntegrityModeChanged: controller.setIntegrityMode,
+                    onValidateImage: () {
+                      controller.validateSelectedFirmwareImage();
+                    },
                   ),
                 ),
                 const SizedBox(height: 32),

@@ -35,38 +35,39 @@ You used a **shareable / view** link. That opens Drive’s HTML viewer in a brow
 not the `.bin`. The package then SHA-256s the HTML, so the digest looks random
 and pre-transfer integrity fails.
 
-### How to make a downloadable link
+### How to make a usable firmware URL
 
-1. Upload the firmware `.bin` to Google Drive and open **Share** → set access
-   (e.g. “Anyone with the link”).
-2. Copy the share URL. It looks like:
-
-   ```text
-   https://drive.google.com/file/d/FILE_ID/view?usp=sharing
-   ```
-
-3. Extract `FILE_ID` (the segment between `/d/` and `/view`).
-4. Build a **direct download** URL:
+1. Upload the firmware `.bin` / `.img` to Google Drive (or preferably your CDN).
+2. Open **Share** → “Anyone with the link”, copy the share URL, extract `FILE_ID`.
+3. Prefer a **direct download** URL:
 
    ```text
    https://drive.google.com/uc?export=download&id=FILE_ID
    ```
 
-   Example: share link
-   `.../file/d/1pkykJEFWGH8FmoigpUrmdkPVMySBak5G/view?usp=sharing`
-   → download link
-   `https://drive.google.com/uc?export=download&id=1pkykJEFWGH8FmoigpUrmdkPVMySBak5G`
+   URL validation/load **downloads first**, then checks:
+   - the body is not HTML
+   - if a filename is present (`Content-Disposition` or a `.bin`/`.img` path),
+     it must use a supported extension
 
-5. Use that URL as `uri:` for `FirmwareType.url`. Compute SHA-256 of the binary
-   once (from the download URL or the local file) and pass it as
-   `expectedSha256Hex` if you enable integrity.
+4. Best option: host at `https://your.cdn/firmware/app.bin` (clear path + raw bytes).
 
-**Do not** paste the `/file/d/.../view` share page into `uri`. The package
-rejects HTML responses with `FirmwareDownloadException`.
+5. Compute SHA-256 of the binary once and pass it as `expectedSha256Hex` if you
+   enable integrity.
 
-For large files Google may still return a virus-scan interstitial HTML page;
-prefer a host that serves `application/octet-stream` (S3, GitHub Releases, your
-own CDN) when possible.
+**Do not** paste the `/file/d/.../view` share page into `uri` — that returns HTML
+and fails post-download validation.
+
+### Pre-check before OTA
+
+```dart
+// URL: downloads, then validates payload (not just the URL string)
+final bool ok = await validateFirmwareSource(
+  FirmwareType.url,
+  uri: downloadUrl,
+);
+// assets / filepicker still check the .bin/.img name/path
+```
 
 ## `mtuSize` vs `requestMtu()` — what's the difference?
 
