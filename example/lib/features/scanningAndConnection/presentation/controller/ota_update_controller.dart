@@ -31,6 +31,9 @@ class OtaUpdateController extends GetxController {
 
   bool _otaInProgress = false;
   bool _leavingOnDisconnect = false;
+  /// Set when the progress stream reports failure; replaced by a typed
+  /// [OtaException] message when one is thrown after [failedValue].
+  String? _pendingFailureMessage;
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
 
   BluetoothDevice? get device => home.gBleDevice;
@@ -48,7 +51,7 @@ class OtaUpdateController extends GetxController {
     super.onInit();
     urlController = TextEditingController();
     shaController = TextEditingController(
-      text: '737c55dada54fcbea9dd1b032ca450df1e6a21cdf3bc27045210b8d8622848cb',
+      text: '5e00d6e700e91e3598277b5b78fb32036d4098bbcad25ee566752a43a7f38f62',
     );
     _connectionSubscription = device?.connectionState.listen((state) {
       if (state == BluetoothConnectionState.disconnected) {
@@ -98,22 +101,32 @@ class OtaUpdateController extends GetxController {
     if (Get.isDialogOpen ?? false) {
       Get.back<void>();
     }
-    if (toast != null) showToast(toast);
+    if (toast != null) {
+      showToast(toast, duration: _toastDurationFor(toast));
+    }
   }
 
   void onProgressOutcome(OtaProgressOutcome outcome) {
-    final String toast = switch (outcome) {
-      OtaProgressOutcome.complete => 'OTA Update Complete',
-      OtaProgressOutcome.failed =>
-        'OTA Update Failed. Reconnect to the device before retrying.',
-      OtaProgressOutcome.cancelled => 'OTA Update Cancelled',
-    };
-    dismissProgressDialog(toast: toast);
+    switch (outcome) {
+      case OtaProgressOutcome.complete:
+        _pendingFailureMessage = null;
+        dismissProgressDialog(toast: 'OTA Update Complete');
+      case OtaProgressOutcome.cancelled:
+        _pendingFailureMessage = null;
+        dismissProgressDialog(toast: 'OTA Update Cancelled');
+      case OtaProgressOutcome.failed:
+        // Close the dialog now; toast after updateFirmware returns so a
+        // rethrown OtaException message can replace this generic text.
+        _pendingFailureMessage ??=
+            'OTA Update Failed. Reconnect to the device before retrying.';
+        dismissProgressDialog();
+    }
   }
 
   Future<void> cancelOta() async {
     final Esp32OtaPackage? package = activePackage;
     final bool wasInProgress = package?.isUpdating ?? false;
+    _pendingFailureMessage = null;
     dismissProgressDialog(
       toast: wasInProgress ? 'OTA Update Cancelled' : null,
       force: true,
@@ -153,6 +166,7 @@ class OtaUpdateController extends GetxController {
     }
 
     _otaInProgress = true;
+    _pendingFailureMessage = null;
     try {
       await prepareOtaMtu(currentDevice);
       final Esp32OtaPackage otaPackage = Esp32OtaPackage(
@@ -186,29 +200,37 @@ class OtaUpdateController extends GetxController {
         mtuSize: mtuSize,
         integrity: integrityMode.value.toConfig(shaController.text),
       );
-      // await otaPackage.updateFirmware(
-      //   currentDevice,
-      //   UpdateType.espidf,
-      //   FirmwareType.filepicker,
-      //   mtuSize: mtuSize,
-      //   integrity: FirmwareIntegrityConfig(
-      //     features: {
-      //       IntegrityFeature.shaBeforeTransfer,
-      //       IntegrityFeature.shaAfterFlash,
-      //     },
-      //     expectedSha256Hex:
-      //         '5e00d6e700e91e3598277b5b78fb32036d4098bbcad25ee566752a43a7f38f62',
-      //   ),
-      // );
+      // Fallback if the progress stream did not already dismiss the dialog:
+      // success requires device ACK (firmwareUpdate), not transfer progress alone.
+      if (showProgressDialog) {
+        onProgressOutcome(
+          otaPackage.firmwareUpdate
+              ? OtaProgressOutcome.complete
+              : OtaProgressOutcome.failed,
+        );
+      }
     } on OtaException catch (e) {
       debugPrint('OTA failed: $e');
-      dismissProgressDialog(toast: e.message);
+      _pendingFailureMessage = e.message;
+      dismissProgressDialog(force: true);
     } catch (e) {
       debugPrint('Unexpected OTA error: $e');
-      dismissProgressDialog(toast: 'OTA update failed');
+      _pendingFailureMessage = 'OTA update failed: $e';
+      dismissProgressDialog(force: true);
     } finally {
+      final String? failure = _pendingFailureMessage;
+      _pendingFailureMessage = null;
+      if (failure != null) {
+        showToast(failure, duration: _toastDurationFor(failure));
+      }
       _otaInProgress = false;
     }
+  }
+
+  static Duration _toastDurationFor(String message) {
+    if (message.length > 80) return const Duration(seconds: 6);
+    if (message.length > 40) return const Duration(seconds: 4);
+    return const Duration(seconds: 2);
   }
 
   Future<void> _showIncompatibleDeviceDialog() async {

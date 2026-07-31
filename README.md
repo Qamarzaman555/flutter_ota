@@ -19,12 +19,12 @@ image to a nearby ESP32 without a wired flash tool: the package loads the
 binary, runs the protocol handshake, streams progress, and completes (or fails)
 with typed errors your UI can handle cleanly.
 
-* 📡 **Transport** — Bluetooth Low Energy (BLE)
-* 🧩 **Protocols** — ESP-IDF and Arduino OTA handshakes
-* 📦 **Firmware sources** — Bundled assets, local file picker, or remote URL
-* 🔒 **Integrity** — Optional SHA-256 before transfer and after flash
-* 📈 **Progress** — Live percentage stream with clear terminal states
-* 🛠️ **Roadmap** — Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)**
+- 📡 **Transport** — Bluetooth Low Energy (BLE)
+- 🧩 **Protocols** — ESP-IDF and Arduino OTA handshakes
+- 📦 **Firmware sources** — Bundled assets, local file picker, or remote URL
+- 🔒 **Integrity** — Optional SHA-256 before transfer and after flash
+- 📈 **Progress** — Live percentage stream with clear terminal states
+- 🛠️ **Roadmap** — Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)**
 
 Support for **MQTT** and **Wi-Fi (HTTP/HTTPS)** delivery is planned for future
 releases, extending the same OTA workflow beyond BLE.
@@ -33,30 +33,30 @@ releases, extending the same OTA workflow beyond BLE.
 
 **Features**
 
-* Supports firmware updates from bundled assets, a file picker, and URLs.
-* Implements a progress stream to track update progress.
-* Compatible with both ESP-IDF and Arduino firmware.
-* Handles communication with ESP32 devices using Bluetooth Low Energy (BLE).
-* Typed errors (`OtaException` and friends) and early validation of empty
+- Supports firmware updates from bundled assets, a file picker, and URLs.
+- Implements a progress stream to track update progress.
+- Compatible with both ESP-IDF and Arduino firmware.
+- Handles communication with ESP32 devices using Bluetooth Low Energy (BLE).
+- Typed errors (`OtaException` and friends) and early validation of empty
   firmware, so failures surface clearly instead of corrupting an update.
-* Optional firmware integrity: SHA-256 before transfer and post-flash SHA-256
+- Optional firmware integrity: SHA-256 before transfer and post-flash SHA-256
   , enable any combination your device supports (or none).
-* Self-disposing: resources are released automatically when an update reaches a
+- Self-disposing: resources are released automatically when an update reaches a
   terminal state.
 
 **Requirements**
 
-* Flutter `>=3.32.0`
-* Dart `>=3.8.0 <4.0.0`
+- Flutter `>=3.32.0`
+- Dart `>=3.8.0 <4.0.0`
 
 **What's new in 1.0.0**
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release notes. Highlights:
 
-* Typed OTA exceptions and early empty-firmware validation
-* Optional SHA-256 integrity (`shaBeforeTransfer`, `shaAfterFlash`)
-* Configurable `mtuSize` with protocol-aware limits
-* Automatic resource disposal when an update ends
+- Typed OTA exceptions and early empty-firmware validation
+- Optional SHA-256 integrity (`shaBeforeTransfer`, `shaAfterFlash`)
+- Configurable `mtuSize` with protocol-aware limits
+- Automatic resource disposal when an update ends
 
 Upgrading from `0.x`? Follow the breaking-API steps in
 [MIGRATION.md](MIGRATION.md). Common questions: [FAQ.md](FAQ.md). Want to
@@ -85,14 +85,14 @@ will run.
 
 ### iOS
 
-* Set the iOS deployment target to **13.0** or higher (required by
+- Set the iOS deployment target to **13.0** or higher (required by
   `flutter_blue_plus`). In `ios/Podfile`:
 
 ```ruby
 platform :ios, '13.0'
 ```
 
-* Add the Bluetooth usage descriptions to `ios/Runner/Info.plist` so the system
+- Add the Bluetooth usage descriptions to `ios/Runner/Info.plist` so the system
   permission prompt has a reason to show the user:
 
 ```xml
@@ -153,17 +153,38 @@ Esp32OtaPackage otaPackage = Esp32OtaPackage(notifyCharacteristic, writeCharacte
 
 4. Choose the firmware update type (`updateType`) and firmware type (`firmwareType`):
 
-* `updateType` (`UpdateType` enum):
-    * `UpdateType.espidf`: ESP-IDF/Espressif Firmware Update
-      Indicates that the firmware update follows the ESP-IDF/Espressif framework. In this case, you'll typically perform OTA updates using binary files and utilize the NimBLE Bluetooth stack.
+- `updateType` (`UpdateType` enum):
+  - `UpdateType.espidf`: ESP-IDF/Espressif Firmware Update
+    Indicates that the firmware update follows the ESP-IDF/Espressif framework. In this case, you'll typically perform OTA updates using binary files and utilize the NimBLE Bluetooth stack.
 
-    * `UpdateType.arduino`: Arduino IDE-Based Firmware Update
-      Suggests that the firmware update is based on the Arduino framework for ESP32. This could involve custom OTA update logic implemented on the ESP32 side, possibly using specific GATT services and characteristics for communication.
-      By checking the updateType parameter, you can adapt your OTA update logic to the specific requirements of the firmware implementation. This ensures compatibility and seamless OTA updates for different types of ESP32 firmware.
-* `firmwareType` (`FirmwareType` enum):
-    * `FirmwareType.assets`: For binary firmware files stored in your Flutter project assets.
-    * `FirmwareType.filepicker`: To select a binary firmware file from the device storage.
-    * `FirmwareType.url`: For downloading firmware from a URL.
+  - `UpdateType.arduino`: Arduino IDE-Based Firmware Update
+    Suggests that the firmware update is based on the Arduino framework for ESP32. This could involve custom OTA update logic implemented on the ESP32 side, possibly using specific GATT services and characteristics for communication.
+    By checking the updateType parameter, you can adapt your OTA update logic to the specific requirements of the firmware implementation. This ensures compatibility and seamless OTA updates for different types of ESP32 firmware.
+
+- `firmwareType` (`FirmwareType` enum):
+  - `FirmwareType.assets`: For binary firmware files stored in your Flutter project assets.
+  - `FirmwareType.filepicker`: To select a binary firmware file from the device storage.
+  - `FirmwareType.url`: For downloading firmware from a URL. The URL must return
+    the **raw binary** (`application/octet-stream` or similar), not an HTML page.
+
+### Firmware URL tips (Google Drive and similar)
+
+`FirmwareType.url` performs a plain HTTP GET and treats the response body as
+firmware. A Google Drive **share / view** link downloads HTML, not your `.bin`:
+
+```text
+# Wrong — browser viewer page (HTML; SHA changes every request)
+https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+
+# Right — direct download
+https://drive.google.com/uc?export=download&id=FILE_ID
+```
+
+To convert a share link: copy `FILE_ID` from
+`/file/d/FILE_ID/view?...`, then use the `uc?export=download&id=` form above.
+If the response is HTML, the package throws `FirmwareDownloadException` instead
+of flashing it. See [FAQ.md](FAQ.md#why-does-the-sha-256-change-every-time-i-download-from-google-drive)
+for the full steps. Prefer S3, GitHub Releases, or your own CDN when you can.
 
 5. Call `updateFirmware` with the parameters that apply to your chosen
    `firmwareType` (`uri` is required for every type except
@@ -211,11 +232,11 @@ await otaPackage.updateFirmware(
 );
 ```
 
-| Parameter | Applies to |
-| --- | --- |
-| `uri` | Required for every `FirmwareType` except `FirmwareType.filepicker` |
-| `mtuSize` | Both update types (default `500`); see [Chunk size and BLE MTU](#chunk-size-mtusize-and-ble-mtu-negotiation) below |
-| `integrity` | Optional; defaults to no integrity checks. See [Firmware integrity](#firmware-integrity-optional) |
+| Parameter   | Applies to                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `uri`       | Required for every `FirmwareType` except `FirmwareType.filepicker`                                                 |
+| `mtuSize`   | Both update types (default `500`); see [Chunk size and BLE MTU](#chunk-size-mtusize-and-ble-mtu-negotiation) below |
+| `integrity` | Optional; defaults to no integrity checks. See [Firmware integrity](#firmware-integrity-optional)                  |
 
 ### Chunk size (`mtuSize`) and BLE MTU negotiation
 
@@ -226,16 +247,16 @@ for you. Your app must negotiate BLE MTU before starting an update, and the
 `mtuSize` you pass to `updateFirmware` must fit within what was actually
 negotiated.
 
-| Protocol | How `mtuSize` is used |
-| --- | --- |
-| **ESP-IDF** | Splits firmware into chunks at load time (assets, file picker, URL); sends the value to the device in the handshake MTU packet; each chunk written must be ≤ `mtuSize`. |
+| Protocol    | How `mtuSize` is used                                                                                                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ESP-IDF** | Splits firmware into chunks at load time (assets, file picker, URL); sends the value to the device in the handshake MTU packet; each chunk written must be ≤ `mtuSize`.                                                          |
 | **Arduino** | Loads the full binary for file picker (chunk size is not used at load time); splits each 16 KB segment into `0xFB` BLE packets of `mtuSize` bytes during transfer; sends the value to the device in the `0xFF` handshake packet. |
 
 **Aligning `requestMtu()` with `mtuSize`:**
 
-* **ESP-IDF:** each characteristic write is one firmware chunk, so `mtuSize`
+- **ESP-IDF:** each characteristic write is one firmware chunk, so `mtuSize`
   must fit the negotiated ATT MTU (hard cap 512).
-* **Arduino:** each write is `mtuSize + 2` bytes on the wire (2-byte `0xFB`
+- **Arduino:** each write is `mtuSize + 2` bytes on the wire (2-byte `0xFB`
   header), so ensure the wire size fits within the negotiated ATT MTU.
 
 ```dart
@@ -256,8 +277,8 @@ while GATT writes fail at runtime.
 
 `mtuSize` is validated before any data is sent and must be:
 
-* **`UpdateType.espidf`:** between `1` and `512` (`maxMtuSize`).
-* **`UpdateType.arduino`:** between `1` and `510` (`maxMtuSize - arduinoHeaderSize`).
+- **`UpdateType.espidf`:** between `1` and `512` (`maxMtuSize`).
+- **`UpdateType.arduino`:** between `1` and `510` (`maxMtuSize - arduinoHeaderSize`).
   The Arduino protocol prepends a 2-byte header to every packet.
 
 An out-of-range value throws an `OtaException` before any BLE writes begin.
@@ -267,10 +288,10 @@ An out-of-range value throws an `OtaException` before any BLE writes begin.
 Integrity is **off by default** so existing firmware keeps working. Features are
 independent , combine any subset your device supports:
 
-| Feature | Where it runs | Device support needed? |
-| --- | --- | --- |
-| `shaBeforeTransfer` | Flutter compares loaded bytes to `expectedSha256Hex` / `expectedSha256Bytes` before BLE | No |
-| `shaAfterFlash` | App sends expected SHA-256; device verifies flash before success/reboot | Yes |
+| Feature             | Where it runs                                                                           | Device support needed? |
+| ------------------- | --------------------------------------------------------------------------------------- | ---------------------- |
+| `shaBeforeTransfer` | Flutter compares loaded bytes to `expectedSha256Hex` / `expectedSha256Bytes` before BLE | No                     |
+| `shaAfterFlash`     | App sends expected SHA-256; device verifies flash before success/reboot                 | Yes                    |
 
 ```dart
 // SHA at start only (server hash, no device changes):
@@ -328,8 +349,10 @@ otaPackage.percentageStream.listen((progress) {
     // Update was cancelled by the user.
   } else if (progress == failedValue) {
     // Update failed because of a BLE error.
+  } else if (progress == 100) {
+    // Device acknowledged a successful update.
   } else {
-    // Normal progress (0-100).
+    // Transfer progress (0–99). 100 is reserved for post-ACK success.
   }
 });
 ```
@@ -346,16 +369,16 @@ otaPackage.percentageStream.listen((progress) {
 
 The package distinguishes two kinds of failures:
 
-* **BLE / transport errors during an in-progress update** (device disconnects, a
+- **BLE / transport errors during an in-progress update** (device disconnects, a
   write fails with a GATT error, etc.) are reported on `percentageStream` as
   `failedValue` (`-2`) rather than thrown, so a mid-transfer drop does not crash
   your app. Handle these via the stream as shown above.
 
-* **Setup / integrity errors** (empty firmware, download failure, pre-transfer
+- **Setup / integrity errors** (empty firmware, download failure, pre-transfer
   SHA mismatch, or device-reported post-flash SHA mismatch) are thrown as typed
-  exceptions. Integrity mismatches also emit `failedValue` first so UI listeners
-  still update, then rethrow so you can branch on type. Wrap `updateFirmware` in
-  a `try/catch`:
+  exceptions. These also emit `failedValue` first so UI listeners still update,
+  then rethrow so you can branch on type. Wrap `updateFirmware` in a
+  `try/catch`:
 
 ```dart
 try {
@@ -386,14 +409,14 @@ try {
 
 The exception types are:
 
-| Exception | When it is thrown |
-| --- | --- |
-| `OtaException` | Base class for all OTA errors thrown by the package. |
-| `EmptyFirmwareException` | The firmware source yields no data (empty asset/file, empty download, or no file selected). |
-| `FirmwareDownloadException` | The HTTP download fails (non-200 status, timeout, or network error). Carries an optional `statusCode`. |
-| `FirmwareIntegrityException` | Base class for integrity verification failures. |
-| `FirmwareHashMismatchException` | App-side SHA-256 mismatch (`shaBeforeTransfer`). |
-| `DeviceHashMismatchException` | Device reported post-flash SHA-256 mismatch (`shaAfterFlash`; Arduino `0x0E` / ESP-IDF status `6`). |
+| Exception                       | When it is thrown                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `OtaException`                  | Base class for all OTA errors thrown by the package.                                                   |
+| `EmptyFirmwareException`        | The firmware source yields no data (empty asset/file, empty download, or no file selected).            |
+| `FirmwareDownloadException`     | The HTTP download fails (non-200 status, timeout, or network error). Carries an optional `statusCode`. |
+| `FirmwareIntegrityException`    | Base class for integrity verification failures.                                                        |
+| `FirmwareHashMismatchException` | App-side SHA-256 mismatch (`shaBeforeTransfer`).                                                       |
+| `DeviceHashMismatchException`   | Device reported post-flash SHA-256 mismatch (`shaAfterFlash`; Arduino `0x0E` / ESP-IDF status `6`).    |
 
 ## Releasing resources
 
@@ -425,10 +448,10 @@ We thank [fugidev](https://github.com/fugidev) for contributions to the `updateF
 
 The `flutter_ota` package provides a streamlined approach to performing OTA firmware updates for ESP32 devices using Flutter applications. It simplifies communication with ESP32 devices over Bluetooth Low Energy (BLE) and streamlines the OTA update process. This package offers several key features:
 
-* Support for various firmware update scenarios (binary files, URLs)
-* Progress tracking through a stream for updating UI elements
-* Compatibility with different firmware types
-* Asynchronous programming for efficient BLE communication
+- Support for various firmware update scenarios (binary files, URLs)
+- Progress tracking through a stream for updating UI elements
+- Compatibility with different firmware types
+- Asynchronous programming for efficient BLE communication
 
 By integrating `flutter_ota` into your Flutter project, you can seamlessly deliver firmware updates to your ESP32 devices wirelessly, enhancing user experience and ensuring your devices stay up-to-date.
-This comprehensive explanation effectively covers the `flutter_ota` package, its functionalities, and its usage within a Flutter application for OTA updates on ESP32 devices. It provides valuable insights for developers seeking to implement wireless firmware updates in their projects. 
+This comprehensive explanation effectively covers the `flutter_ota` package, its functionalities, and its usage within a Flutter application for OTA updates on ESP32 devices. It provides valuable insights for developers seeking to implement wireless firmware updates in their projects.

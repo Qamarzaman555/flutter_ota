@@ -98,7 +98,7 @@ void main() {
       expect(client.firmwareUpdate, isFalse);
     });
 
-    test('emits failedValue when firmware is empty', () async {
+    test('emits failedValue and rethrows when firmware is empty', () async {
       final FakeOtaTransport transport = FakeOtaTransport();
       final FakeProtocol protocol = FakeProtocol();
       final OtaClient client = OtaClient(
@@ -109,11 +109,45 @@ void main() {
 
       final Future<List<int>> events = client.percentageStream.toList();
 
-      await client.run(mtuSize: 128);
+      await expectLater(
+        client.run(mtuSize: 128),
+        throwsA(isA<EmptyFirmwareException>()),
+      );
 
       expect(await events, <int>[failedValue]);
       expect(protocol.performCalled, isFalse);
       expect(transport.disposeCalls, 1);
+    });
+
+    test('emits failedValue and rethrows on download failure', () async {
+      final FakeOtaTransport transport = FakeOtaTransport();
+      final FakeProtocol protocol = FakeProtocol();
+      final OtaClient client = OtaClient(
+        transport: transport,
+        protocol: protocol,
+        source: _ThrowingFirmwareSource(
+          FirmwareDownloadException(
+            'URL returned HTML instead of a firmware binary.',
+            statusCode: 200,
+          ),
+        ),
+      );
+
+      final Future<List<int>> events = client.percentageStream.toList();
+
+      await expectLater(
+        client.run(mtuSize: 128),
+        throwsA(
+          isA<FirmwareDownloadException>().having(
+            (e) => e.message,
+            'message',
+            contains('HTML instead of a firmware binary'),
+          ),
+        ),
+      );
+
+      expect(await events, <int>[failedValue]);
+      expect(protocol.performCalled, isFalse);
     });
   });
 
@@ -140,4 +174,13 @@ class _DeferredFirmwareSource implements FirmwareSource {
 
   @override
   Future<Uint8List> load() => _future;
+}
+
+class _ThrowingFirmwareSource implements FirmwareSource {
+  _ThrowingFirmwareSource(this.error);
+
+  final Object error;
+
+  @override
+  Future<Uint8List> load() => Future<Uint8List>.error(error);
 }

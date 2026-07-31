@@ -5,9 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- ESP-IDF transfer progress no longer reaches `100` before the device ACKs
+  FINISH (status `5`). Mid-transfer progress is capped at `99`; terminal `100`
+  is emitted only after a successful device acknowledgement. The example app
+  also treats success as `firmwareUpdate` after ACK, not progress alone.
+- URL firmware downloads that return HTML (e.g. a Google Drive `/view` share
+  page) are rejected with a clear error instead of being hashed as firmware.
+- `FirmwareDownloadException` and `EmptyFirmwareException` are rethrown after
+  emitting `failedValue`, so UIs can show the real failure reason (not only a
+  generic “OTA failed” toast).
+
 ## [1.0.0] - 2026-06-08
 
 ### Added
+
 - GitHub Actions CI workflow that runs `dart format`, `flutter analyze`, and
   `flutter test` (package + example) on pushes and pull requests.
 - Optional, composable firmware integrity via `FirmwareIntegrityConfig` /
@@ -51,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ESP-IDF and Arduino.
 
 ### Fixed
+
 - `OtaClient.run()` now rejects concurrent calls with `OtaException` (same
   re-entrancy guard as `Esp32OtaPackage.updateFirmware`), so custom
   transport/protocol users cannot interleave writes on a shared transport.
@@ -79,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before indexing `value[0]`.
 
 ### Changed
+
 - Refactored the OTA API to use the `UpdateType` and `FirmwareType` enums in
   place of integer codes.
 - Firmware loaders now throw the typed exceptions above instead of plain
@@ -92,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mtuSize` before writing, catching internal chunk/handshake mismatches early.
 
 ### Removed
+
 - The unused `service` and UUID parameters from `updateFirmware`.
 - Unused helper methods (`getFirmware`, `uint8ListToIntList`) from
   `Esp32OtaPackage`.
@@ -101,11 +119,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.15] - 2024-04-18
 
 ### Changed
+
 - Updated dependencies to the latest versions.
 
 ## [0.0.5] - 2023-08-08
 
 ### Added
+
 - First public release of the `flutter_ota` package on pub.dev.
 - Firmware update over Bluetooth Low Energy (BLE) for ESP32.
 

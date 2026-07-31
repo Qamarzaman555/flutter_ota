@@ -37,8 +37,9 @@ class OtaClient {
 
   /// Stream of progress percentages and terminal values.
   ///
-  /// Emits `0`–`100` during transfer, [cancelledValue] on cancellation,
-  /// [failedValue] on failure, and `100` on success.
+  /// Emits `0`–`99` during transfer, [cancelledValue] on cancellation,
+  /// [failedValue] on failure, and `100` only after the device acknowledges
+  /// a successful update.
   Stream<int> get percentageStream => _percentageController.stream;
 
   /// Whether an OTA update is currently in progress.
@@ -122,9 +123,14 @@ class OtaClient {
       _firmwareUpdateSucceeded = succeeded;
       _completeUpdate(succeeded ? 100 : failedValue);
     } catch (e) {
-      // Integrity failures: emit failedValue for UI, then rethrow so callers
-      // can branch on type (pre-transfer vs device post-flash mismatch).
-      rethrowError = e is FirmwareIntegrityException ? e : null;
+      // Setup / integrity failures: emit failedValue for UI, then rethrow so
+      // callers can show the real reason (download HTML, empty binary, SHA
+      // mismatch). Mid-transfer BLE faults stay stream-only (failedValue).
+      rethrowError = e is FirmwareIntegrityException ||
+              e is FirmwareDownloadException ||
+              e is EmptyFirmwareException
+          ? e
+          : null;
       _handleUpdateError(e);
     } finally {
       await _transport.dispose();

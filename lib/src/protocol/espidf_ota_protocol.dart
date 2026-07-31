@@ -70,8 +70,11 @@ class EspIdfOtaProtocol implements OtaProtocol {
       await transport.writeData(chunk);
       chunkIndex++;
 
-      final double progress = (chunkIndex / totalChunks) * 100;
-      final int roundedProgress = progress.round();
+      // Cap at 99 during transfer. Terminal 100 is reserved for OtaClient after
+      // the device ACKs FINISH (status 5); emitting 100 here would make UIs
+      // report success before the final ACK.
+      final int roundedProgress =
+          ((chunkIndex / totalChunks) * 100).round().clamp(0, 99);
       otaLogger.d('Writing chunk $chunkIndex/$totalChunks — $roundedProgress%');
       onProgress(roundedProgress);
     }

@@ -128,8 +128,8 @@ class ArduinoOtaProtocol implements OtaProtocol {
               return;
             }
 
-            final double progress = (segmentIndex / totalSegmentCount) * 100;
-            final int roundedProgress = progress.round();
+            final int roundedProgress =
+                ((segmentIndex / totalSegmentCount) * 100).round().clamp(0, 99);
             otaLogger.d(
               'Segment $segmentIndex/$totalSegmentCount — $roundedProgress%',
             );

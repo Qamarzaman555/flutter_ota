@@ -41,7 +41,10 @@ class OtaProgressDialog extends StatelessWidget {
           }
 
           final double progress = (value.clamp(0, 100)) / 100.0;
-          if (progress >= 1.0 && isShowing()) {
+          // Terminal 100 is emitted only after the device ACKs success
+          // (see EspIdfOtaProtocol / OtaClient). Do not treat mid-transfer
+          // progress as complete without firmwareUpdate.
+          if (value == 100 && otaPackage.firmwareUpdate && isShowing()) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               onOutcome(OtaProgressOutcome.complete);
             });

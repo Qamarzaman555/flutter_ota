@@ -6,9 +6,9 @@ the `0.x` → `1.0.0` API break see [MIGRATION.md](MIGRATION.md).
 
 ## Which `UpdateType` should I use?
 
-| Firmware on the ESP32 | Use |
-| --- | --- |
-| ESP-IDF / Espressif NimBLE OTA | `UpdateType.espidf` |
+| Firmware on the ESP32               | Use                  |
+| ----------------------------------- | -------------------- |
+| ESP-IDF / Espressif NimBLE OTA      | `UpdateType.espidf`  |
 | Arduino BLE OTA (e.g. fbiego-style) | `UpdateType.arduino` |
 
 The enums only select the **phone-side** protocol. Your device must expose the
@@ -27,6 +27,46 @@ matching GATT service and speak the matching opcodes. Sequence diagrams:
 No. `FirmwareIntegrityConfig` defaults to none; the wire format is unchanged.
 Turn on `shaBeforeTransfer` / `shaAfterFlash` only if your device firmware
 implements those features.
+
+## Why does the SHA-256 change every time I download from Google Drive?
+
+You used a **shareable / view** link. That opens Drive’s HTML viewer in a browser;
+`FirmwareType.url` downloads that same HTML (often with a new nonce each time),
+not the `.bin`. The package then SHA-256s the HTML, so the digest looks random
+and pre-transfer integrity fails.
+
+### How to make a downloadable link
+
+1. Upload the firmware `.bin` to Google Drive and open **Share** → set access
+   (e.g. “Anyone with the link”).
+2. Copy the share URL. It looks like:
+
+   ```text
+   https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+   ```
+
+3. Extract `FILE_ID` (the segment between `/d/` and `/view`).
+4. Build a **direct download** URL:
+
+   ```text
+   https://drive.google.com/uc?export=download&id=FILE_ID
+   ```
+
+   Example: share link
+   `.../file/d/1pkykJEFWGH8FmoigpUrmdkPVMySBak5G/view?usp=sharing`
+   → download link
+   `https://drive.google.com/uc?export=download&id=1pkykJEFWGH8FmoigpUrmdkPVMySBak5G`
+
+5. Use that URL as `uri:` for `FirmwareType.url`. Compute SHA-256 of the binary
+   once (from the download URL or the local file) and pass it as
+   `expectedSha256Hex` if you enable integrity.
+
+**Do not** paste the `/file/d/.../view` share page into `uri`. The package
+rejects HTML responses with `FirmwareDownloadException`.
+
+For large files Google may still return a virus-scan interstitial HTML page;
+prefer a host that serves `application/octet-stream` (S3, GitHub Releases, your
+own CDN) when possible.
 
 ## `mtuSize` vs `requestMtu()` — what's the difference?
 
@@ -49,14 +89,15 @@ services** before starting another OTA on that device.
 
 They are intentional stream sentinels:
 
-| Value | Constant | Meaning |
-| --- | --- | --- |
-| `-1` | `cancelledValue` | Caller cancelled |
-| `-2` | `failedValue` | BLE / transfer failure (emitted instead of crashing) |
+| Value | Constant         | Meaning                                              |
+| ----- | ---------------- | ---------------------------------------------------- |
+| `-1`  | `cancelledValue` | Caller cancelled                                     |
+| `-2`  | `failedValue`    | BLE / transfer failure (emitted instead of crashing) |
 
 Integrity mismatches (`FirmwareHashMismatchException`,
-`DeviceHashMismatchException`) also emit `failedValue`, then rethrow so you can
-catch them by type after `await updateFirmware(...)`.
+`DeviceHashMismatchException`), empty firmware, and download failures also emit
+`failedValue`, then rethrow so you can catch them by type after
+`await updateFirmware(...)`.
 
 ## Which platforms are supported?
 
