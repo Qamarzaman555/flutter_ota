@@ -11,7 +11,13 @@ export 'src/firmware/asset_firmware_source.dart';
 export 'src/firmware/file_picker_firmware_source.dart';
 export 'src/firmware/firmware_image.dart';
 export 'src/firmware/url_firmware_source.dart';
-export 'src/logging/ota_logger.dart' show otaVerboseLogging;
+export 'src/logging/ota_logger.dart'
+    show
+        clearOtaSessionLogs,
+        otaLogCaptureEnabled,
+        otaSessionLogText,
+        otaSessionLogs,
+        otaVerboseLogging;
 export 'src/models/constants.dart';
 export 'src/models/firmware_integrity.dart';
 export 'src/models/firmware_type.dart';

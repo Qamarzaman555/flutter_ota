@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional `saveOtaLogs` parameter on `updateFirmware` (default `true`) to
+  capture the current OTA run’s log lines in memory for host-app debug UIs.
+  Oversized / firmware-payload dumps are never stored — status, handshake,
+  progress, and error lines only.
+- Exported session-log helpers: `otaSessionLogs`, `otaSessionLogText`,
+  `clearOtaSessionLogs`, and `otaLogCaptureEnabled`.
+- Example app: **Save OTA logs** toggle, **View OTA Logs** screen with
+  copy/clear, and route `/ota_logs`.
 - `validateFirmwareImage` / `isSupportedFirmwareImage` — pre-check that a path,
   URL, or filename is `.bin` or `.img` before starting OTA.
 - `validateFirmwareSource` — for URLs, downloads then validates the payload

@@ -97,6 +97,25 @@ try {
 Mid-transfer BLE failures still surface on `percentageStream` as `failedValue`
 (`-2`), not as thrown exceptions.
 
+## Optional: session log capture (`saveOtaLogs`)
+
+Included in **1.0.0**, additive and **on by default** — no migration required.
+Each `updateFirmware` call with `saveOtaLogs: true` clears and fills an
+in-memory buffer you can show in a logger screen:
+
+```dart
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.espidf,
+  FirmwareType.filepicker,
+  saveOtaLogs: true, // default; set false to disable
+);
+
+final logs = otaSessionLogText;
+```
+
+See [README § Session logs](README.md#session-logs-saveotalogs).
+
 ## Optional: firmware integrity
 
 New in 1.0.0 and **off by default** — existing device firmware keeps working

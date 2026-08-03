@@ -11,6 +11,8 @@ nearby ESP32 over BLE, connect, and flash firmware Over-The-Air.
 - OTA with `Esp32OtaPackage` (Arduino service UUIDs by default)
 - Live progress via `percentageStream`, including cancel (`-1`) and BLE failure
   (`-2`) sentinels
+- **Save OTA logs** (`saveOtaLogs` on `updateFirmware`, default on) and a
+  **View OTA Logs** screen that displays `otaSessionLogs`
 - Disconnect / reconnect guidance after cancel or device reboot
 
 Firmware can be loaded from a URL, the file picker, or bundled assets, depending
@@ -53,6 +55,7 @@ this example. For integrating `flutter_ota` into your own app, see the
 | --- | --- |
 | `lib/main.dart` | App entry, permission bootstrap |
 | `lib/features/scanningAndConnection/` | Scan, connect, and OTA UI |
+| `…/view/ota_logger_page.dart` | In-app viewer for `otaSessionLogs` |
 | `lib/core/permissions/` | Bluetooth / location helpers |
 | `lib/core/bluetooth/` | BLE adapter helpers |
 

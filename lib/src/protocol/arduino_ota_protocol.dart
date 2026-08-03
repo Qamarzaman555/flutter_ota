@@ -58,7 +58,6 @@ class ArduinoOtaProtocol implements OtaProtocol {
     required void Function(int percent) onProgress,
   }) async {
     otaLogger.i('Starting Arduino OTA — chunk size (MTU): $mtuSize');
-    verboseTrace('Loaded firmware bytes: $firmware');
     otaLogger.d('Firmware length: ${firmware.length} bytes');
     if (integrity.features.isNotEmpty) {
       otaLogger.i('Integrity features: ${integrity.features}');

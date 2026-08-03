@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/ota_update_controller.dart';
+import 'package:ota_new_protocol/features/scanningAndConnection/presentation/view/ota_logger_page.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/view/ota_update_page.dart';
 
 import '../features/scanningAndConnection/presentation/view/scanning_page_view.dart';
@@ -30,6 +31,12 @@ class RoutePages {
       }),
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 500),
+    ),
+    GetPage(
+      name: AppRoutes.otaLogs,
+      page: () => const OtaLoggerPage(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 300),
     ),
   ];
 }

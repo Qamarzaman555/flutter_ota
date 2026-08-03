@@ -165,7 +165,7 @@ validated **up front** against each protocol's max write size (BLE single-write
 limit of 512 bytes, with Arduino reserving header/CRC overhead) — so a bad
 value throws *before* any data is sent instead of failing mid-transfer:
 
-```92:98:lib/src/esp32_ota_package.dart
+```104:110:lib/src/esp32_ota_package.dart
       final OtaProtocol protocol = _protocolFor(updateType, integrity);
       if (mtuSize < 1 || mtuSize > protocol.maxWriteSize) {
         throw OtaException(
@@ -174,6 +174,13 @@ value throws *before* any data is sent instead of failing mid-transfer:
         );
       }
 ```
+
+### Session log capture (`saveOtaLogs`)
+
+`updateFirmware` accepts `saveOtaLogs` (default `true`). When enabled, the run’s
+log lines are stored in memory and exposed as `otaSessionLogs` /
+`otaSessionLogText` so host apps can build a logger screen without scraping the
+console. Details: [Structured logging and session log capture](#structured-logging-and-session-log-capture).
 
 ### Typed error hierarchy
 
@@ -281,10 +288,42 @@ user can navigate freely while the update runs:
   }
 ```
 
-### Structured logging
+### Structured logging and session log capture
 
-Uses the `logger` package with a colorized `PrettyPrinter`, and suppresses output
-in release builds, replacing raw `print` calls.
+Uses the `logger` package with a colorized `PrettyPrinter` on the console.
+Console output is suppressed in release builds unless session capture is on;
+raw `print` calls are not used.
+
+Pass `saveOtaLogs: true` (the default) to `updateFirmware` to also store plain
+log lines in memory for the duration of that run. Read them after (or during)
+the update for an in-app logger screen. Capture never stores raw firmware
+payloads — only status / handshake / progress / error lines (oversized dumps
+are dropped automatically).
+
+```dart
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.espidf,
+  FirmwareType.url,
+  uri: firmwareUrl,
+  saveOtaLogs: true, // default
+);
+
+// e.g. display in a ScrollView / SelectableText
+print(otaSessionLogText);
+clearOtaSessionLogs();
+```
+
+| API | Role |
+| --- | --- |
+| `saveOtaLogs` | Named `updateFirmware` flag (default `true`) — clear + capture for this run |
+| `otaSessionLogs` / `otaSessionLogText` | In-memory lines for UI or share/copy |
+| `clearOtaSessionLogs` | Wipe the buffer |
+| `otaLogCaptureEnabled` | Whether capture is currently active |
+| `otaVerboseLogging` | Extra packet/progress traces (default `false`; noisy; never dumps firmware binaries) |
+
+The example app shows a **Save OTA logs** switch and a **View OTA Logs** screen
+when capture is enabled. See [example/README.md](example/README.md).
 
 ---
 
@@ -448,6 +487,7 @@ await otaPackage.updateFirmware(
   FirmwareType.assets,
   uri: 'assets/firmware.bin',
   mtuSize: 500, // optional, default 500
+  saveOtaLogs: true, // optional, default true — capture logs for a debug UI
 );
 
 // Arduino — firmware downloaded from a URL
@@ -468,7 +508,7 @@ await otaPackage.updateFirmware(
 
 The method signature and the meaning of each parameter:
 
-```26:33:lib/src/models/ota_package.dart
+```30:38:lib/src/models/ota_package.dart
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
@@ -476,6 +516,7 @@ The method signature and the meaning of each parameter:
     String? uri,
     int mtuSize,
     FirmwareIntegrityConfig integrity,
+    bool saveOtaLogs,
   });
 ```
 
@@ -487,6 +528,7 @@ The method signature and the meaning of each parameter:
 | `uri` | All except `filepicker` | Asset path or URL of the `.bin`. |
 | `mtuSize` | Optional (default `500`) | Bytes per BLE packet. 1–512 for ESP-IDF, 1–510 for Arduino. |
 | `integrity` | Optional (default none) | Composable SHA-256 features; enable only what firmware supports. |
+| `saveOtaLogs` | Optional (default `true`) | Capture this run’s logs in memory (`otaSessionLogs`). See [Structured logging](#structured-logging-and-session-log-capture). |
 
 ### Step 8 — Handle setup / integrity errors
 
@@ -662,6 +704,10 @@ chunking, resource management, and a cleaner API**.
   protocol-aware validation — out-of-range values throw `OtaException` before any
   BLE write instead of failing mid-transfer.
 - **Structured `logger`-based logging**, replacing `print`.
+- **Session log capture** via optional `saveOtaLogs` on `updateFirmware`
+  (default `true`), plus `otaSessionLogs` / `otaSessionLogText` /
+  `clearOtaSessionLogs` for in-app debug UIs. Firmware payloads are never
+  stored in the session buffer.
 
 ### Fixed
 

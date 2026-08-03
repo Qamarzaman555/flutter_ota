@@ -24,6 +24,7 @@ with typed errors your UI can handle cleanly.
 - 📦 **Firmware sources** — Bundled assets, local file picker, or remote URL
 - 🔒 **Integrity** — Optional SHA-256 before transfer and after flash
 - 📈 **Progress** — Live percentage stream with clear terminal states
+- 📝 **Session logs** — Optional in-memory capture via `saveOtaLogs` for debug UIs
 - 🛠️ **Roadmap** — Additional channels planned: **MQTT** and **Wi-Fi (HTTP/HTTPS)**
 
 Support for **MQTT** and **Wi-Fi (HTTP/HTTPS)** delivery is planned for future
@@ -41,6 +42,7 @@ releases, extending the same OTA workflow beyond BLE.
   firmware, so failures surface clearly instead of corrupting an update.
 - Optional firmware integrity: SHA-256 before transfer and post-flash SHA-256
   , enable any combination your device supports (or none).
+- Optional session log capture (`saveOtaLogs`) for in-app debug screens.
 - Self-disposing: resources are released automatically when an update reaches a
   terminal state.
 
@@ -56,6 +58,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release notes. Highlights:
 - Typed OTA exceptions and early empty-firmware validation
 - Optional SHA-256 integrity (`shaBeforeTransfer`, `shaAfterFlash`)
 - Configurable `mtuSize` with protocol-aware limits
+- Session log capture via `saveOtaLogs` (default on) for in-app debug UIs
 - Automatic resource disposal when an update ends
 
 Upgrading from `0.x`? Follow the breaking-API steps in
@@ -212,11 +215,12 @@ await otaPackage.updateFirmware(
 );
 ```
 
-| Parameter   | Applies to                                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------ |
-| `uri`       | Required for every `FirmwareType` except `FirmwareType.filepicker`                                                 |
-| `mtuSize`   | Both update types (default `500`); see [Chunk size and BLE MTU](#chunk-size-mtusize-and-ble-mtu-negotiation) below |
-| `integrity` | Optional; defaults to no integrity checks. See [Firmware integrity](#firmware-integrity-optional)                  |
+| Parameter     | Applies to                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `uri`         | Required for every `FirmwareType` except `FirmwareType.filepicker`                                                 |
+| `mtuSize`     | Both update types (default `500`); see [Chunk size and BLE MTU](#chunk-size-mtusize-and-ble-mtu-negotiation) below |
+| `integrity`   | Optional; defaults to no integrity checks. See [Firmware integrity](#firmware-integrity-optional)                  |
+| `saveOtaLogs` | Optional (default `true`); capture this run’s logs for an in-app logger. See [Session logs](#session-logs-saveotalogs) |
 
 ### Chunk size (`mtuSize`) and BLE MTU negotiation
 
@@ -262,6 +266,40 @@ while GATT writes fail at runtime.
   The Arduino protocol prepends a 2-byte header to every packet.
 
 An out-of-range value throws an `OtaException` before any BLE writes begin.
+
+### Session logs (`saveOtaLogs`)
+
+By default, `updateFirmware` captures detailed OTA log lines in memory for the
+current run (`saveOtaLogs: true`). Host apps can show them on a debug / logger
+screen (the example app has a **View OTA Logs** button when this is enabled).
+
+```dart
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.espidf,
+  FirmwareType.filepicker,
+  saveOtaLogs: true, // default — set false to skip capture
+);
+
+// After (or during) the update:
+final List<String> lines = otaSessionLogs;
+final String text = otaSessionLogText; // newline-joined
+clearOtaSessionLogs();                 // wipe the buffer
+```
+
+| API                    | Meaning                                                          |
+| ---------------------- | ---------------------------------------------------------------- |
+| `saveOtaLogs`          | Named param on `updateFirmware` (default `true`)                 |
+| `otaSessionLogs`       | Unmodifiable list of captured lines for the latest enabled run   |
+| `otaSessionLogText`    | Same content as a single string                                  |
+| `clearOtaSessionLogs`  | Clears the in-memory buffer                                      |
+| `otaLogCaptureEnabled` | Whether capture is currently on                                  |
+| `otaVerboseLogging`    | Extra packet/progress traces (default `false`; noisy, no firmware dumps) |
+
+Capture starts (and the buffer is cleared) when a run begins with
+`saveOtaLogs: true`. Firmware payloads and other oversized dumps are never
+stored — only status / handshake / progress / error lines. Console
+pretty-printing still follows normal development filters.
 
 ### Firmware integrity (optional)
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/controller/ota_update_controller.dart';
 import 'package:ota_new_protocol/features/scanningAndConnection/presentation/view/widgets/ota_options_form.dart';
+import 'package:ota_new_protocol/utils/colors.dart';
 
 import '../../../../common/custom_button/primary_action_button.dart';
 
@@ -49,11 +50,39 @@ class NewOTAUpdatePage extends GetView<OtaUpdateController> {
                     },
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
+                Obx(
+                  () => SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Save OTA logs'),
+                    subtitle: const Text(
+                      'Capture detailed package logs for this update',
+                    ),
+                    activeColor: secondaryColor,
+                    inactiveTrackColor: Colors.white,
+                    inactiveThumbColor: secondaryColor,
+                    value: controller.saveOtaLogs.value,
+                    onChanged: controller.setSaveOtaLogs,
+                  ),
+                ),
+                const SizedBox(height: 16),
                 PrimaryActionButton(
                   label: 'Start OTA',
                   onTap: controller.startOta,
                 ),
+                Obx(() {
+                  if (!controller.saveOtaLogs.value) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: PrimaryActionButton(
+                      label: 'View OTA Logs',
+                      outlined: true,
+                      onTap: controller.openOtaLogs,
+                    ),
+                  );
+                }),
               ],
             ),
           ),

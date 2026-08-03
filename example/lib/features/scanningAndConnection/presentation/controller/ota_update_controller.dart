@@ -23,6 +23,10 @@ class OtaUpdateController extends GetxController {
   final Rx<FirmwareType> firmwareType = FirmwareType.filepicker.obs;
   final Rx<OtaIntegrityMode> integrityMode = OtaIntegrityMode.none.obs;
 
+  /// Mirrors [Esp32OtaPackage.updateFirmware]'s `saveOtaLogs` flag.
+  /// When true, the OTA page shows a button that opens the logger screen.
+  final RxBool saveOtaLogs = true.obs;
+
   late final TextEditingController urlController;
   late final TextEditingController shaController;
 
@@ -74,6 +78,10 @@ class OtaUpdateController extends GetxController {
   void setFirmwareType(FirmwareType type) => firmwareType.value = type;
 
   void setIntegrityMode(OtaIntegrityMode mode) => integrityMode.value = mode;
+
+  void setSaveOtaLogs(bool value) => saveOtaLogs.value = value;
+
+  void openOtaLogs() => Get.toNamed(AppRoutes.otaLogs);
 
   void returnToHomeOnDisconnect() {
     if (_leavingOnDisconnect) return;
@@ -227,6 +235,7 @@ class OtaUpdateController extends GetxController {
             : urlController.text.trim(),
         mtuSize: mtuSize,
         integrity: integrityMode.value.toConfig(shaController.text),
+        saveOtaLogs: saveOtaLogs.value,
       );
       // Fallback if the progress stream did not already dismiss the dialog:
       // success requires device ACK (firmwareUpdate), not transfer progress alone.

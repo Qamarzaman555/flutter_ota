@@ -10,6 +10,7 @@ import 'package:flutter_ota/src/firmware/asset_firmware_source.dart';
 import 'package:flutter_ota/src/firmware/file_picker_firmware_source.dart';
 import 'package:flutter_ota/src/firmware/firmware_image.dart';
 import 'package:flutter_ota/src/firmware/url_firmware_source.dart';
+import 'package:flutter_ota/src/logging/ota_logger.dart';
 import 'package:flutter_ota/src/models/constants.dart';
 import 'package:flutter_ota/src/models/firmware_integrity.dart';
 import 'package:flutter_ota/src/models/firmware_type.dart';
@@ -73,6 +74,7 @@ class Esp32OtaPackage implements OtaPackage {
     String? uri,
     int mtuSize = 500,
     FirmwareIntegrityConfig integrity = FirmwareIntegrityConfig.none,
+    bool saveOtaLogs = true,
   }) async {
     if (_updateInProgress) {
       throw OtaException(
@@ -81,6 +83,7 @@ class Esp32OtaPackage implements OtaPackage {
       );
     }
     _updateInProgress = true;
+    setOtaLogCaptureEnabled(saveOtaLogs);
 
     try {
       if (firmwareType != FirmwareType.filepicker &&

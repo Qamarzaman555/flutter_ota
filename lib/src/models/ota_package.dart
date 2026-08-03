@@ -23,6 +23,10 @@ abstract class OtaPackage {
   ///   transfer, post-flash SHA-256). Defaults to
   ///   [FirmwareIntegrityConfig.none]. Enable only what the device firmware
   ///   supports — features combine freely.
+  /// [saveOtaLogs]: When `true` (the default), OTA log lines for this run are
+  ///   captured in memory and available via `otaSessionLogs` /
+  ///   `otaSessionLogText` for in-app debug screens. When `false`, capture is
+  ///   disabled for the run.
   Future<void> updateFirmware(
     BluetoothDevice device,
     UpdateType updateType,
@@ -30,6 +34,7 @@ abstract class OtaPackage {
     String? uri,
     int mtuSize,
     FirmwareIntegrityConfig integrity,
+    bool saveOtaLogs,
   });
 
   /// Whether the most recent OTA update completed successfully.

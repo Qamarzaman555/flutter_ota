@@ -69,6 +69,31 @@ final bool ok = await validateFirmwareSource(
 // assets / filepicker still check the .bin/.img name/path
 ```
 
+## How do I capture OTA logs for a debug / logger screen?
+
+Pass `saveOtaLogs: true` to `updateFirmware` (this is the **default**). The
+package stores plain log lines for that run in memory. Read them with
+`otaSessionLogs` or `otaSessionLogText`, and clear with `clearOtaSessionLogs()`.
+
+```dart
+await otaPackage.updateFirmware(
+  device,
+  UpdateType.arduino,
+  FirmwareType.filepicker,
+  saveOtaLogs: true, // omit to use the default
+);
+
+// Show in your own logger UI, or copy/share:
+final String dump = otaSessionLogText;
+```
+
+Set `saveOtaLogs: false` if you do not want capture for a run. For noisier
+packet/progress traces (still no firmware binaries), also set
+`otaVerboseLogging = true` (off by default).
+The example app wires this to a **Save OTA logs** switch and a **View OTA Logs**
+screen — see [example/README.md](example/README.md) and
+[README § Session logs](README.md#session-logs-saveotalogs).
+
 ## `mtuSize` vs `requestMtu()` — what's the difference?
 
 - `BluetoothDevice.requestMtu()` negotiates the BLE ATT MTU (your app must call
@@ -109,7 +134,8 @@ permissions described in the [README](README.md#platform-setup).
 ## Where is the example app?
 
 [`example/`](example/README.md) — scan, connect, and flash with the Arduino
-default UUIDs (replace them for your firmware).
+default UUIDs (replace them for your firmware). It also demonstrates
+`saveOtaLogs` with a **View OTA Logs** screen.
 
 ## How do I contribute?
 
