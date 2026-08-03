@@ -26,8 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IntegrityFeature`:
   - `shaBeforeTransfer` — Flutter SHA-256 of the loaded binary vs a
     server-provided digest before any BLE write.
-  - `shaAfterFlash` — expected digest sent to the device after the image
-    (ESP-IDF PostSHA: `SET_HASH`/`0x07` + 32 bytes, then `DONE`); success only
+  - `shaAfterFlash` — expected digest sent to the device **after** the image
+    (ESP-IDF PostSHA: `SET_HASH`/`0x07` + 32 bytes, then `DONE`; Arduino:
+    `0xF9` flags + `0xFA` + 32 bytes after the last segment); success only
     after post-flash verification (Arduino `0x0F` / ESP-IDF status `5`;
     mismatch Arduino `0x0E` / ESP-IDF status `6`).
 - Features combine freely so firmware may support SHA-start only, SHA-end only,

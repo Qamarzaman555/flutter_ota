@@ -25,13 +25,14 @@ const int arduinoHeaderSize = 2;
 /// Size in bytes of a SHA-256 digest.
 const int sha256DigestSize = 32;
 
-/// Arduino: app sends the expected SHA-256 digest for post-flash verification.
-/// Payload: `[0xFA, …32 digest bytes]`.
-const int arduinoExpectedHashOpcode = 0xFA;
-
 /// Arduino: app announces which optional integrity features are active.
 /// Payload: `[0xF9, flags]` where bit1 = shaAfterFlash.
+/// Sent after all firmware segments (same timing as ESP-IDF PostSHA).
 const int arduinoIntegrityFlagsOpcode = 0xF9;
+
+/// Arduino: app sends the expected SHA-256 digest for post-flash verification.
+/// Payload: `[0xFA, …32 digest bytes]`. Sent after [arduinoIntegrityFlagsOpcode].
+const int arduinoExpectedHashOpcode = 0xFA;
 
 /// Arduino: device reports post-flash SHA-256 mismatch.
 const int arduinoHashMismatchOpcode = 0x0E;

@@ -161,7 +161,7 @@ void main() {
     });
 
     test(
-      'sends integrity flags and hash when post-flash SHA is enabled',
+      'sends integrity flags and hash after the image when post-flash SHA is enabled',
       () async {
         final Uint8List firmware = Uint8List.fromList(
           List<int>.generate(40, (i) => i),
@@ -187,16 +187,85 @@ void main() {
 
         await Future<void>.delayed(Duration.zero);
 
-        expect(transport.dataWrites[3].first, arduinoIntegrityFlagsOpcode);
-        expect(transport.dataWrites[3][1], integrityFlagShaAfterFlash);
-        expect(transport.dataWrites[4].first, arduinoExpectedHashOpcode);
-        expect(transport.dataWrites[4].length, 1 + sha256DigestSize);
+        // Handshake first — integrity comes after the image (ESP-IDF-aligned).
+        expect(transport.dataWrites.take(3).map((w) => w.first), <int>[
+          0xFD,
+          0xFE,
+          0xFF,
+        ]);
 
         final Uint8List firstDataPacket = transport.dataWrites.firstWhere(
           (w) => w.isNotEmpty && w.first == 0xFB,
         );
         // header(2) + payload(20)
         expect(firstDataPacket.length, 22);
+
+        final int lastFcIndex = transport.dataWrites.lastIndexWhere(
+          (w) => w.isNotEmpty && w.first == 0xFC,
+        );
+        expect(lastFcIndex, greaterThanOrEqualTo(0));
+
+        final int flagsIndex = transport.dataWrites.indexWhere(
+          (w) => w.isNotEmpty && w.first == arduinoIntegrityFlagsOpcode,
+        );
+        final int hashIndex = transport.dataWrites.indexWhere(
+          (w) => w.isNotEmpty && w.first == arduinoExpectedHashOpcode,
+        );
+        expect(flagsIndex, greaterThan(lastFcIndex));
+        expect(hashIndex, flagsIndex + 1);
+        expect(transport.dataWrites[flagsIndex][1], integrityFlagShaAfterFlash);
+        expect(transport.dataWrites[hashIndex].length, 1 + sha256DigestSize);
+
+        transport.emitInbound(<int>[0x0F]);
+        expect(await result, isTrue);
+      },
+    );
+
+    test(
+      'sends post-flash hash only after the last segment on multi-segment images',
+      () async {
+        // Two segments: firmwareSegmentSize is 16000.
+        final Uint8List firmware = Uint8List.fromList(
+          List<int>.generate(16001, (i) => i % 256),
+        );
+        final String hex = sha256.convert(firmware).toString();
+        final FakeOtaTransport transport = FakeOtaTransport();
+        final ArduinoOtaProtocol protocol = ArduinoOtaProtocol(
+          integrity: FirmwareIntegrityConfig(
+            features: {IntegrityFeature.shaAfterFlash},
+            expectedSha256Hex: hex,
+          ),
+        );
+
+        final Future<bool> result = protocol.performUpdate(
+          transport: transport,
+          firmware: firmware,
+          mtuSize: 500,
+          isCancelRequested: () => false,
+          onProgress: (_) {},
+        );
+
+        await Future<void>.delayed(Duration.zero);
+
+        // After segment 0 only — no integrity yet.
+        expect(
+          transport.dataWrites.where(
+            (w) => w.isNotEmpty && w.first == arduinoIntegrityFlagsOpcode,
+          ),
+          isEmpty,
+        );
+
+        transport.emitInbound(<int>[0xF1, 0x00, 0x01]); // request segment 1
+        await Future<void>.delayed(Duration.zero);
+
+        final int flagsIndex = transport.dataWrites.indexWhere(
+          (w) => w.isNotEmpty && w.first == arduinoIntegrityFlagsOpcode,
+        );
+        expect(flagsIndex, greaterThan(0));
+        expect(
+          transport.dataWrites[flagsIndex + 1].first,
+          arduinoExpectedHashOpcode,
+        );
 
         transport.emitInbound(<int>[0x0F]);
         expect(await result, isTrue);

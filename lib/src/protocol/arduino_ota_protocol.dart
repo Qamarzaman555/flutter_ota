@@ -33,6 +33,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
 
   StreamSubscription<Uint8List>? _subscription;
   Completer<bool>? _updateCompleter;
+  bool _postTransferIntegritySent = false;
 
   @override
   int get maxWriteSize => maxMtuSize - arduinoHeaderSize;
@@ -143,6 +144,12 @@ class ArduinoOtaProtocol implements OtaProtocol {
               mtuSize,
               isCancelRequested,
             );
+            await _sendPostTransferIntegrityIfNeeded(
+              transport,
+              firmware,
+              segmentIndex: segmentIndex,
+              totalSegmentCount: totalSegmentCount,
+            );
             return;
           default:
             if (value.length < 3) {
@@ -163,6 +170,7 @@ class ArduinoOtaProtocol implements OtaProtocol {
     });
 
     try {
+      _postTransferIntegritySent = false;
       await _sendHandshake(
         transport,
         firmwareByteLength: firmwareByteLength,
@@ -170,8 +178,8 @@ class ArduinoOtaProtocol implements OtaProtocol {
         mtuSize: mtuSize,
       );
 
-      await _sendOptionalIntegrityPrelude(transport, firmware);
-
+      // Match ESP-IDF PostSHA: transfer the full image first, then send the
+      // expected digest (0xF9 / 0xFA) for device-side flash verification.
       const int initialSegmentIndex = 0;
       await _sendFirmwareSegment(
         transport,
@@ -179,6 +187,12 @@ class ArduinoOtaProtocol implements OtaProtocol {
         firmware,
         mtuSize,
         isCancelRequested,
+      );
+      await _sendPostTransferIntegrityIfNeeded(
+        transport,
+        firmware,
+        segmentIndex: initialSegmentIndex,
+        totalSegmentCount: totalSegmentCount,
       );
       onProgress(0);
       otaLogger.d(
@@ -193,14 +207,24 @@ class ArduinoOtaProtocol implements OtaProtocol {
     }
   }
 
-  Future<void> _sendOptionalIntegrityPrelude(
+  /// After the last firmware segment, send `0xF9` / `0xFA` when
+  /// [IntegrityFeature.shaAfterFlash] is enabled (ESP-IDF-aligned timing).
+  Future<void> _sendPostTransferIntegrityIfNeeded(
     OtaTransport transport,
-    Uint8List firmware,
-  ) async {
-    if (!integrity.requiresDeviceSupport) return;
+    Uint8List firmware, {
+    required int segmentIndex,
+    required int totalSegmentCount,
+  }) async {
+    if (_postTransferIntegritySent) return;
+    if (totalSegmentCount <= 0 || segmentIndex != totalSegmentCount - 1) {
+      return;
+    }
+    if (!integrity.verifyAfterFlash) return;
+
+    _postTransferIntegritySent = true;
 
     int flags = 0;
-    if (integrity.verifyAfterFlash) flags |= integrityFlagShaAfterFlash;
+    flags |= integrityFlagShaAfterFlash;
 
     final Uint8List flagsPacket = Uint8List.fromList([
       arduinoIntegrityFlagsOpcode,
@@ -209,19 +233,17 @@ class ArduinoOtaProtocol implements OtaProtocol {
     await transport.writeData(flagsPacket);
     otaLogger.d('Sent integrity flags: 0x${flags.toRadixString(16)}');
 
-    if (integrity.verifyAfterFlash) {
-      final List<int> digest =
-          integrity.resolvedExpectedSha256 ?? sha256Of(firmware);
-      final String digestHex = sha256ToHex(digest);
-      otaLogger.i(
-        'SHA-256 to send to firmware (post-flash verify): $digestHex',
-      );
-      final Uint8List hashPacket = Uint8List(1 + sha256DigestSize)
-        ..[0] = arduinoExpectedHashOpcode;
-      hashPacket.setRange(1, 1 + sha256DigestSize, digest);
-      await transport.writeData(hashPacket);
-      otaLogger.d('Sent expected SHA-256 for post-flash verify: $digestHex');
-    }
+    final List<int> digest =
+        integrity.resolvedExpectedSha256 ?? sha256Of(firmware);
+    final String digestHex = sha256ToHex(digest);
+    otaLogger.i(
+      'SHA-256 to send to firmware after image (post-flash verify): $digestHex',
+    );
+    final Uint8List hashPacket = Uint8List(1 + sha256DigestSize)
+      ..[0] = arduinoExpectedHashOpcode;
+    hashPacket.setRange(1, 1 + sha256DigestSize, digest);
+    await transport.writeData(hashPacket);
+    otaLogger.d('Sent expected SHA-256 for post-flash verify: $digestHex');
   }
 
   void _completeUpdate(bool succeeded) {

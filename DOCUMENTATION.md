@@ -592,7 +592,9 @@ sequenceDiagram
 Phone starts with a three-packet handshake on the **write** characteristic
 (`0xFD` / `0xFE` / `0xFF`), then streams **16 KB segments** as `0xFB` BLE
 packets ending in a `0xFC` marker. The device requests the next segment with
-`0xF1` on notify and finishes with `0x0F` (or `0x0E` on hash mismatch).
+`0xF1` on notify. When `shaAfterFlash` is enabled, the app sends `0xF9` /
+`0xFA` **after** the last segment (same timing as ESP-IDF PostSHA), then the
+device finishes with `0x0F` (or `0x0E` on hash mismatch).
 
 ```mermaid
 sequenceDiagram
@@ -604,11 +606,6 @@ sequenceDiagram
   App->>Write: 0xFE + file size (4 bytes, big-endian)
   App->>Write: 0xFF + segment count (2) + mtuSize (2)
 
-  opt shaAfterFlash enabled
-    App->>Write: 0xF9 + integrity flags
-    App->>Write: 0xFA + expected SHA-256 (32 bytes)
-  end
-
   App->>Write: Segment 0 — N× (0xFB + index + payload)
   App->>Write: 0xFC + segment length + segment index
 
@@ -616,6 +613,11 @@ sequenceDiagram
     Notify-->>App: 0xF1 + next segment index (2 bytes)
     App->>Write: Segment i — N× (0xFB + index + payload)
     App->>Write: 0xFC + segment length + segment index
+  end
+
+  opt shaAfterFlash enabled
+    App->>Write: 0xF9 + integrity flags
+    App->>Write: 0xFA + expected SHA-256 (32 bytes)
   end
 
   opt Device starting install

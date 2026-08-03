@@ -307,10 +307,12 @@ Pass the config as `integrity:` on `updateFirmware`. Mismatches throw
 `FirmwareHashMismatchException` (pre-transfer) or `DeviceHashMismatchException`
 (post-flash) after emitting `failedValue` on the progress stream.
 
-**Wire notes (when `shaAfterFlash` is on):** ESP-IDF — after image chunks,
-control `0x07` (`SET_HASH`) + 32-byte digest on data, read `0x02` ACK, then
-`0x04` DONE (do not send `0x02` as SET_HASH; status `6` = hash mismatch).
-Arduino — `0xF9` flags, `0xFA` + 32-byte digest, mismatch `0x0E`.
+**Wire notes (when `shaAfterFlash` is on):** After the full image is written,
+both protocols send the expected digest, then wait for device verify:
+ESP-IDF — control `0x07` (`SET_HASH`) + 32-byte digest on data, read `0x02`
+ACK, then `0x04` DONE (do not send `0x02` as SET_HASH; status `6` = mismatch).
+Arduino — `0xF9` flags, then `0xFA` + 32-byte digest; mismatch `0x0E`, success
+`0x0F`.
 
 6. Listen to the `percentageStream` of the `otaPackage` to track the update progress:
 
