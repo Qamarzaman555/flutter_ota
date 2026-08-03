@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_ota/flutter_ota.dart';
 import 'package:get/get.dart';
@@ -19,6 +20,9 @@ class OtaUpdateController extends GetxController {
 
   final HomePageController home;
 
+  static const String _genericFailureToast =
+      'OTA Update Failed. Reconnect to the device before retrying.';
+
   final Rx<UpdateType> updateType = UpdateType.espidf.obs;
   final Rx<FirmwareType> firmwareType = FirmwareType.filepicker.obs;
   final Rx<OtaIntegrityMode> integrityMode = OtaIntegrityMode.none.obs;
@@ -29,6 +33,7 @@ class OtaUpdateController extends GetxController {
 
   late final TextEditingController urlController;
   late final TextEditingController shaController;
+  late final TextEditingController mtuController;
 
   Esp32OtaPackage? activePackage;
   bool showProgressDialog = false;
@@ -57,6 +62,9 @@ class OtaUpdateController extends GetxController {
     shaController = TextEditingController(
       text: '5e00d6e700e91e3598277b5b78fb32036d4098bbcad25ee566752a43a7f38f62',
     );
+    mtuController = TextEditingController(
+      text: '${OtaBleConstants.defaultMtuSize}',
+    );
     _connectionSubscription = device?.connectionState.listen((state) {
       if (state == BluetoothConnectionState.disconnected) {
         returnToHomeOnDisconnect();
@@ -69,6 +77,7 @@ class OtaUpdateController extends GetxController {
     _connectionSubscription?.cancel();
     urlController.dispose();
     shaController.dispose();
+    mtuController.dispose();
     activePackage = null;
     super.onClose();
   }
@@ -124,9 +133,8 @@ class OtaUpdateController extends GetxController {
         dismissProgressDialog(toast: 'OTA Update Cancelled');
       case OtaProgressOutcome.failed:
         // Close the dialog now; toast after updateFirmware returns so a
-        // rethrown OtaException message can replace this generic text.
-        _pendingFailureMessage ??=
-            'OTA Update Failed. Reconnect to the device before retrying.';
+        // rethrown / logged BLE error can replace this generic text.
+        _pendingFailureMessage ??= _genericFailureToast;
         dismissProgressDialog();
     }
   }
@@ -182,11 +190,15 @@ class OtaUpdateController extends GetxController {
       url: urlController.text,
       integrityMode: integrityMode.value,
       sha256Hex: shaController.text,
+      updateType: updateType.value,
+      mtuSizeText: mtuController.text,
     );
     if (validationError != null) {
       showToast(validationError);
       return;
     }
+
+    final int mtuSize = parseMtuSize(mtuController.text)!;
 
     final BluetoothDevice? currentDevice = device;
     final List<BluetoothService> services = home.gBleServices;
@@ -223,9 +235,6 @@ class OtaUpdateController extends GetxController {
       );
 
       otaVerboseLogging = true;
-      final int mtuSize = updateType.value == UpdateType.arduino
-          ? OtaBleConstants.arduinoMtuSize
-          : OtaBleConstants.espidfMtuSize;
       await otaPackage.updateFirmware(
         currentDevice,
         updateType.value,
@@ -250,6 +259,10 @@ class OtaUpdateController extends GetxController {
       debugPrint('OTA failed: $e');
       _pendingFailureMessage = e.message;
       dismissProgressDialog(force: true);
+    } on PlatformException catch (e) {
+      debugPrint('OTA BLE platform error: $e');
+      _pendingFailureMessage = _toastForPlatformException(e);
+      dismissProgressDialog(force: true);
     } catch (e) {
       debugPrint('Unexpected OTA error: $e');
       _pendingFailureMessage = 'OTA update failed: $e';
@@ -258,10 +271,60 @@ class OtaUpdateController extends GetxController {
       final String? failure = _pendingFailureMessage;
       _pendingFailureMessage = null;
       if (failure != null) {
-        showToast(failure, duration: _toastDurationFor(failure));
+        final String toast = _resolveFailureToast(failure);
+        showToast(toast, duration: _toastDurationFor(toast));
       }
       _otaInProgress = false;
     }
+  }
+
+  /// Prefers a logged PlatformException / GATT write error when the package
+  /// only reported stream `failedValue` without rethrowing.
+  String _resolveFailureToast(String fallback) {
+    final String? fromLogs = _bleFailureMessageFromSessionLogs();
+    if (fromLogs == null) return fallback;
+    if (fallback == _genericFailureToast) return fromLogs;
+    return fallback;
+  }
+
+  static String? _bleFailureMessageFromSessionLogs() {
+    for (final String line in otaSessionLogs.reversed) {
+      const String marker = '| error:';
+      final int index = line.indexOf(marker);
+      if (index == -1) continue;
+      final String error = line.substring(index + marker.length).trim();
+      if (error.isEmpty) continue;
+      return _humanizeBleWriteError(error);
+    }
+    return null;
+  }
+
+  static String _toastForPlatformException(PlatformException e) {
+    final String raw = e.message?.trim().isNotEmpty == true
+        ? '${e.code}: ${e.message}'
+        : e.toString();
+    return _humanizeBleWriteError(raw);
+  }
+
+  static String _humanizeBleWriteError(String error) {
+    final RegExpMatch? match = RegExp(
+      r'data longer than allowed[.\s]*(dataLen:\s*\d+\s*>\s*max:\s*\d+)',
+      caseSensitive: false,
+    ).firstMatch(error);
+    if (match != null) {
+      return 'BLE write too large (${match.group(1)}). Lower chunk size '
+          '(ESP-IDF ≤ ${OtaBleConstants.maxEspIdfMtuSize}, '
+          'Arduino ≤ ${OtaBleConstants.maxArduinoMtuSize}).';
+    }
+    if (error.contains('PlatformException')) {
+      final RegExpMatch? pe = RegExp(
+        r'PlatformException\(([^,]+),\s*([^,]+)',
+      ).firstMatch(error);
+      if (pe != null) {
+        return '${pe.group(1)!.trim()}: ${pe.group(2)!.trim()}';
+      }
+    }
+    return error;
   }
 
   static Duration _toastDurationFor(String message) {

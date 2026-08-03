@@ -12,6 +12,7 @@ class OtaOptionsForm extends StatelessWidget {
     required this.integrityMode,
     required this.urlController,
     required this.shaController,
+    required this.mtuController,
     required this.onUpdateTypeChanged,
     required this.onFirmwareTypeChanged,
     required this.onIntegrityModeChanged,
@@ -23,6 +24,7 @@ class OtaOptionsForm extends StatelessWidget {
   final OtaIntegrityMode integrityMode;
   final TextEditingController urlController;
   final TextEditingController shaController;
+  final TextEditingController mtuController;
   final ValueChanged<UpdateType> onUpdateTypeChanged;
   final ValueChanged<FirmwareType> onFirmwareTypeChanged;
   final ValueChanged<OtaIntegrityMode> onIntegrityModeChanged;
@@ -30,6 +32,7 @@ class OtaOptionsForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final int maxMtu = maxMtuForUpdateType(updateType);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -52,6 +55,22 @@ class OtaOptionsForm extends StatelessWidget {
           onSelectionChanged: (selection) {
             onUpdateTypeChanged(selection.first);
           },
+        ),
+        const SizedBox(height: 24),
+        const _SectionLabel('Chunk size (MTU)'),
+        const SizedBox(height: 8),
+        TextField(
+          controller: mtuController,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            labelText: 'Firmware bytes per write',
+            hintText: '$maxMtu max for ${updateType.name}',
+            helperText: updateType == UpdateType.arduino
+                ? 'Arduino adds a 2-byte header on the wire. Range 1–$maxMtu.'
+                : 'ESP-IDF range 1–$maxMtu (ATT write max when MTU is 512).',
+            border: const OutlineInputBorder(),
+          ),
         ),
         const SizedBox(height: 24),
         const _SectionLabel('Firmware source'),

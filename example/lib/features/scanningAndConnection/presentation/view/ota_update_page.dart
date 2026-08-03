@@ -42,6 +42,7 @@ class NewOTAUpdatePage extends GetView<OtaUpdateController> {
                     integrityMode: controller.integrityMode.value,
                     urlController: controller.urlController,
                     shaController: controller.shaController,
+                    mtuController: controller.mtuController,
                     onUpdateTypeChanged: controller.setUpdateType,
                     onFirmwareTypeChanged: controller.setFirmwareType,
                     onIntegrityModeChanged: controller.setIntegrityMode,
