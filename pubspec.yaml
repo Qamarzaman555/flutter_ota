@@ -11,10 +11,14 @@ topics:
   - iot
   - esp32
 screenshots:
+  - description: Example home screen to start BLE scanning for ESP32 OTA targets.
+    path: screenshots/home_screen.jpeg
   - description: Example BLE device scan screen showing nearby ESP32 targets for OTA.
-    path: screenshots/ota_device_scan.png
+    path: screenshots/scanning_screen.jpeg
   - description: Example OTA transfer progress with firmware size and integrity checks.
-    path: screenshots/ota_update_progress.png
+    path: screenshots/progress_screen.jpeg
+  - description: Example OTA session logs screen with captured package log lines.
+    path: screenshots/logging_screen.jpeg
 
 environment:
   sdk: '>=3.8.0 <4.0.0'
